@@ -1,0 +1,9 @@
+node_modules/
+.next/
+*.log
+.env
+.DS_Store
+*.swp
+vendor/
+bin/
+dist/
