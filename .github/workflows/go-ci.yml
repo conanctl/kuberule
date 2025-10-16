@@ -46,7 +46,7 @@ jobs:
         run: go mod download
 
       - name: Build
-        run: go build -v -o kuberule-backend ./...
+        run: go build -v -o kuberule-backend .
 
       - name: Test binary execution
         run: |
@@ -56,6 +56,33 @@ jobs:
             exit 1
           fi
           echo "Binary starts successfully"
+
+  static-analysis:
+    name: Static Analysis
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ./backend
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.22'
+
+      - name: Download dependencies
+        run: go mod download
+
+      - name: Run go vet
+        run: go vet ./...
+
+      - name: Run staticcheck
+        uses: dominikh/staticcheck-action@v1
+        with:
+          version: "latest"
+          install-go: false
+          working-directory: ./backend
 
   format-check:
     name: Format Check
