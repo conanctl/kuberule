@@ -84,6 +84,12 @@ jobs:
           install-go: false
           working-directory: ./backend
 
+      - name: Run gosec (Security Scanner)
+        run: |
+          go install github.com/securego/gosec/v2/cmd/gosec@latest
+          gosec -fmt=json -out=gosec-results.json ./... || true
+          gosec ./...
+
   format-check:
     name: Format Check
     runs-on: ubuntu-latest
