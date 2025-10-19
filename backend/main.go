@@ -8,9 +8,12 @@ import (
 	"time"
 
 	"kuberule/backend/api"
+	"kuberule/backend/storage"
 )
 
 func main() {
+	storage.InitDB()
+
 	port := os.Getenv("PORT")
 	if port == "" {
 		port = "18081"
