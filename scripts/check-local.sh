@@ -16,7 +16,7 @@ echo "success"
 
 echo "go mod tidy"
 go mod tidy
-if [ -n "$(git status --porcelain go.mod go.sum 2>/dev/null)" ]; then
+if [ -n "$(git diff go.mod go.sum 2>/dev/null)" ]; then
     git diff go.mod go.sum
     echo "failed"
     exit 1
