@@ -2,11 +2,15 @@ package api
 
 import (
 	"encoding/json"
+	"io"
 	"net/http"
+
+	"kuberule/backend/storage"
 )
 
 func SetupRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("/health", corsMiddleware(HealthCheck))
+	mux.HandleFunc("POST /ingest", corsMiddleware(IngestHandler))
 }
 
 func HealthCheck(w http.ResponseWriter, r *http.Request) {
@@ -34,5 +38,69 @@ func corsMiddleware(next http.HandlerFunc) http.HandlerFunc {
 		}
 
 		next(w, r)
+	}
+}
+
+func IngestHandler(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+
+	bodyBytes, err := io.ReadAll(r.Body)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	defer r.Body.Close()
+
+	var bodyData map[string]interface{}
+	err = json.Unmarshal(bodyBytes, &bodyData)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	clusterIDValue, clusterIDExists := bodyData["cluster_id"]
+	kindValue, kindExists := bodyData["kind"]
+
+	var clusterID string
+	var kind string
+
+	if clusterIDExists {
+		clusterID, _ = clusterIDValue.(string)
+	}
+
+	if kindExists {
+		kind, _ = kindValue.(string)
+	}
+
+	if clusterID == "" || kind == "" {
+		w.WriteHeader(http.StatusBadRequest)
+		errorResponse := map[string]string{
+			"error": "missing cluster_id or kind",
+		}
+		err := json.NewEncoder(w).Encode(errorResponse)
+		if err != nil {
+			return
+		}
+		return
+	}
+
+	payload := string(bodyBytes)
+
+	storageErr := storage.InsertSnapshot(clusterID, kind, payload)
+	if storageErr != nil {
+		http.Error(w, storageErr.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	w.WriteHeader(http.StatusOK)
+	response := map[string]interface{}{
+		"status":     "ingested",
+		"cluster_id": clusterID,
+		"kind":       kind,
+	}
+
+	err = json.NewEncoder(w).Encode(response)
+	if err != nil {
+		return
 	}
 }
