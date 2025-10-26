@@ -1,0 +1,40 @@
+{
+  "apiVersion": "kuberule.io/v1",
+  "kind": "GuardrailPack",
+  "metadata": {
+    "name": "baseline-standards",
+    "version": "1.0.0"
+  },
+  "spec": {
+    "description": "Baseline security guardrails for container images",
+    "owner": "platform-team",
+    "scope": {
+      "clusters": ["*"],
+      "namespaces": ["*"],
+      "workloadKinds": ["Deployment", "StatefulSet", "DaemonSet"]
+    },
+    "guardrails": [
+      {
+        "id": "GR-IMG-001",
+        "title": "No images with critical vulnerabilities",
+        "category": "security",
+        "severity": "critical",
+        "target": "image",
+        "check": {
+          "type": "vuln_threshold",
+          "params": {
+            "maxCritical": 0
+          }
+        },
+        "remediationHint": "Update image to patched version or block deployment until CVEs are fixed",
+        "rationale": "Critical vulnerabilities pose immediate security risk",
+        "exceptions": [
+          {
+            "type": "namespace",
+            "value": "kube-system"
+          }
+        ]
+      }
+    ]
+  }
+}
