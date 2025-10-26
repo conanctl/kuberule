@@ -37,7 +37,7 @@ func InitDB() {
 }
 
 func createTables() {
-	query := `
+	scanResultsQuery := `
 		CREATE TABLE IF NOT EXISTS scan_results (
 			id SERIAL PRIMARY KEY,
 			received_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -47,7 +47,22 @@ func createTables() {
 		)
 	`
 
-	_, err := DB.Exec(query)
+	_, err := DB.Exec(scanResultsQuery)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	guardrailPacksQuery := `
+		CREATE TABLE IF NOT EXISTS guardrail_packs (
+			id SERIAL PRIMARY KEY,
+			name TEXT,
+			version TEXT,
+			loaded_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+			pack JSONB
+		)
+	`
+
+	_, err = DB.Exec(guardrailPacksQuery)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -112,4 +127,74 @@ func FetchSnapshots(clusterID string, kind string) ([]map[string]interface{}, er
 	}
 
 	return results, nil
+}
+
+func InsertGuardrailPack(name string, version string, packJSON string) error {
+	query := "INSERT INTO guardrail_packs (name, version, pack) VALUES ($1, $2, $3)"
+
+	_, err := DB.Exec(query, name, version, packJSON)
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func FetchGuardrailPacks() ([]map[string]interface{}, error) {
+	query := "SELECT id, name, version, loaded_at, pack FROM guardrail_packs ORDER BY loaded_at DESC"
+
+	rows, err := DB.Query(query)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var results []map[string]interface{}
+
+	for rows.Next() {
+		var id int
+		var name string
+		var version string
+		var loadedAt string
+		var packBytes []byte
+
+		err := rows.Scan(&id, &name, &version, &loadedAt, &packBytes)
+		if err != nil {
+			return nil, err
+		}
+
+		var packJSON interface{}
+		err = json.Unmarshal(packBytes, &packJSON)
+		if err != nil {
+			return nil, err
+		}
+
+		result := map[string]interface{}{
+			"id":        id,
+			"name":      name,
+			"version":   version,
+			"loaded_at": loadedAt,
+			"pack":      packJSON,
+		}
+
+		results = append(results, result)
+	}
+
+	err = rows.Err()
+	if err != nil {
+		return nil, err
+	}
+
+	return results, nil
+}
+
+func DeleteGuardrailPack(name string) error {
+	query := "DELETE FROM guardrail_packs WHERE name=$1"
+
+	_, err := DB.Exec(query, name)
+	if err != nil {
+		return err
+	}
+
+	return nil
 }

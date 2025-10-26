@@ -11,6 +11,7 @@ import (
 func SetupRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("/health", corsMiddleware(HealthCheck))
 	mux.HandleFunc("POST /ingest", corsMiddleware(IngestHandler))
+	mux.HandleFunc("GET /guardrails", corsMiddleware(GuardrailsHandler))
 }
 
 func HealthCheck(w http.ResponseWriter, r *http.Request) {
@@ -100,6 +101,22 @@ func IngestHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	err = json.NewEncoder(w).Encode(response)
+	if err != nil {
+		return
+	}
+}
+
+func GuardrailsHandler(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+
+	guardrailPacks, err := storage.FetchGuardrailPacks()
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	w.WriteHeader(http.StatusOK)
+	err = json.NewEncoder(w).Encode(guardrailPacks)
 	if err != nil {
 		return
 	}
