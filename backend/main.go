@@ -8,11 +8,17 @@ import (
 	"time"
 
 	"kuberule/backend/api"
+	"kuberule/backend/guardrails"
 	"kuberule/backend/storage"
 )
 
 func main() {
 	storage.InitDB()
+
+	err := guardrails.LoadGuardrailsFromDisk()
+	if err != nil {
+		log.Printf("Warning: Could not load guardrails from disk: %v\n", err)
+	}
 
 	port := os.Getenv("PORT")
 	if port == "" {
@@ -34,7 +40,7 @@ func main() {
 		ReadHeaderTimeout: 5 * time.Second,
 	}
 
-	err := server.ListenAndServe()
+	err = server.ListenAndServe()
 	if err != nil {
 		log.Fatal(err)
 	}

@@ -5,6 +5,7 @@ import (
 	"io"
 	"net/http"
 
+	"kuberule/backend/guardrails"
 	"kuberule/backend/storage"
 )
 
@@ -12,6 +13,7 @@ func SetupRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("/health", corsMiddleware(HealthCheck))
 	mux.HandleFunc("POST /ingest", corsMiddleware(IngestHandler))
 	mux.HandleFunc("GET /guardrails", corsMiddleware(GuardrailsHandler))
+	mux.HandleFunc("POST /guardrails/reload", corsMiddleware(ReloadGuardrailsHandler))
 }
 
 func HealthCheck(w http.ResponseWriter, r *http.Request) {
@@ -117,6 +119,26 @@ func GuardrailsHandler(w http.ResponseWriter, r *http.Request) {
 
 	w.WriteHeader(http.StatusOK)
 	err = json.NewEncoder(w).Encode(guardrailPacks)
+	if err != nil {
+		return
+	}
+}
+
+func ReloadGuardrailsHandler(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+
+	err := guardrails.LoadGuardrailsFromDisk()
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	w.WriteHeader(http.StatusOK)
+	response := map[string]string{
+		"status": "reloaded",
+	}
+
+	err = json.NewEncoder(w).Encode(response)
 	if err != nil {
 		return
 	}
