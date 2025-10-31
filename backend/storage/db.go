@@ -3,6 +3,7 @@ package storage
 import (
 	"database/sql"
 	"encoding/json"
+	"fmt"
 	"log"
 	"os"
 
@@ -63,6 +64,32 @@ func createTables() {
 	`
 
 	_, err = DB.Exec(guardrailPacksQuery)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	findingsQuery := `
+		CREATE TABLE IF NOT EXISTS findings (
+			id SERIAL PRIMARY KEY,
+			guardrail_id TEXT,
+			title TEXT,
+			category TEXT,
+			severity TEXT,
+			target_type TEXT,
+			target_identifier TEXT,
+			cluster_id TEXT,
+			namespace TEXT,
+			status TEXT DEFAULT 'open',
+			first_seen_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+			last_seen_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+			evidence JSONB,
+			remediation_hint TEXT,
+			owner_label_value TEXT,
+			UNIQUE(guardrail_id, target_identifier)
+		)
+	`
+
+	_, err = DB.Exec(findingsQuery)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -192,6 +219,151 @@ func DeleteGuardrailPack(name string) error {
 	query := "DELETE FROM guardrail_packs WHERE name=$1"
 
 	_, err := DB.Exec(query, name)
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func UpsertFinding(finding map[string]interface{}) error {
+	guardrailID := finding["guardrail_id"].(string)
+	title := finding["title"].(string)
+	category := finding["category"].(string)
+	severity := finding["severity"].(string)
+	targetType := finding["target_type"].(string)
+	targetIdentifier := finding["target_identifier"].(string)
+	clusterID := finding["cluster_id"].(string)
+	namespace := finding["namespace"].(string)
+	status := finding["status"].(string)
+	remediationHint := finding["remediation_hint"].(string)
+	ownerLabelValue := finding["owner_label_value"].(string)
+
+	evidenceMap, ok := finding["evidence"].(map[string]interface{})
+	if !ok {
+		evidenceMap = make(map[string]interface{})
+	}
+
+	evidenceJSON, err := json.Marshal(evidenceMap)
+	if err != nil {
+		return err
+	}
+
+	query := `
+		INSERT INTO findings (guardrail_id, title, category, severity, target_type, target_identifier, cluster_id, namespace, status, evidence, remediation_hint, owner_label_value)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+		ON CONFLICT (guardrail_id, target_identifier)
+		DO UPDATE SET last_seen_at=CURRENT_TIMESTAMP, evidence=$10
+	`
+
+	_, err = DB.Exec(query, guardrailID, title, category, severity, targetType, targetIdentifier, clusterID, namespace, status, string(evidenceJSON), remediationHint, ownerLabelValue)
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func FetchFindings(filters map[string]string) ([]map[string]interface{}, error) {
+	query := "SELECT id, guardrail_id, title, category, severity, target_type, target_identifier, cluster_id, namespace, status, first_seen_at, last_seen_at, evidence, remediation_hint, owner_label_value FROM findings WHERE 1=1"
+
+	args := []interface{}{}
+	argIndex := 1
+
+	if status, exists := filters["status"]; exists && status != "" {
+		query += " AND status=$" + fmt.Sprintf("%d", argIndex)
+		args = append(args, status)
+		argIndex++
+	}
+
+	if severity, exists := filters["severity"]; exists && severity != "" {
+		query += " AND severity=$" + fmt.Sprintf("%d", argIndex)
+		args = append(args, severity)
+		argIndex++
+	}
+
+	if clusterID, exists := filters["cluster_id"]; exists && clusterID != "" {
+		query += " AND cluster_id=$" + fmt.Sprintf("%d", argIndex)
+		args = append(args, clusterID)
+		argIndex++
+	}
+
+	if category, exists := filters["category"]; exists && category != "" {
+		query += " AND category=$" + fmt.Sprintf("%d", argIndex)
+		args = append(args, category)
+	}
+
+	query += " ORDER BY last_seen_at DESC"
+
+	rows, err := DB.Query(query, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var results []map[string]interface{}
+
+	for rows.Next() {
+		var id int
+		var guardrailID string
+		var title string
+		var category string
+		var severity string
+		var targetType string
+		var targetIdentifier string
+		var clusterID string
+		var namespace string
+		var status string
+		var firstSeenAt string
+		var lastSeenAt string
+		var evidenceBytes []byte
+		var remediationHint string
+		var ownerLabelValue string
+
+		err := rows.Scan(&id, &guardrailID, &title, &category, &severity, &targetType, &targetIdentifier, &clusterID, &namespace, &status, &firstSeenAt, &lastSeenAt, &evidenceBytes, &remediationHint, &ownerLabelValue)
+		if err != nil {
+			return nil, err
+		}
+
+		var evidenceJSON interface{}
+		err = json.Unmarshal(evidenceBytes, &evidenceJSON)
+		if err != nil {
+			return nil, err
+		}
+
+		result := map[string]interface{}{
+			"id":                id,
+			"guardrail_id":      guardrailID,
+			"title":             title,
+			"category":          category,
+			"severity":          severity,
+			"target_type":       targetType,
+			"target_identifier": targetIdentifier,
+			"cluster_id":        clusterID,
+			"namespace":         namespace,
+			"status":            status,
+			"first_seen_at":     firstSeenAt,
+			"last_seen_at":      lastSeenAt,
+			"evidence":          evidenceJSON,
+			"remediation_hint":  remediationHint,
+			"owner_label_value": ownerLabelValue,
+		}
+
+		results = append(results, result)
+	}
+
+	err = rows.Err()
+	if err != nil {
+		return nil, err
+	}
+
+	return results, nil
+}
+
+func UpdateFindingStatus(findingID int, status string) error {
+	query := "UPDATE findings SET status=$1 WHERE id=$2"
+
+	_, err := DB.Exec(query, status, findingID)
 	if err != nil {
 		return err
 	}

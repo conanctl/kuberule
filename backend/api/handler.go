@@ -14,6 +14,8 @@ func SetupRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("POST /ingest", corsMiddleware(IngestHandler))
 	mux.HandleFunc("GET /guardrails", corsMiddleware(GuardrailsHandler))
 	mux.HandleFunc("POST /guardrails/reload", corsMiddleware(ReloadGuardrailsHandler))
+	mux.HandleFunc("GET /findings", corsMiddleware(FindingsHandler))
+	mux.HandleFunc("POST /findings", corsMiddleware(UpdateFindingHandler))
 }
 
 func HealthCheck(w http.ResponseWriter, r *http.Request) {
@@ -136,6 +138,80 @@ func ReloadGuardrailsHandler(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusOK)
 	response := map[string]string{
 		"status": "reloaded",
+	}
+
+	err = json.NewEncoder(w).Encode(response)
+	if err != nil {
+		return
+	}
+}
+
+func FindingsHandler(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+
+	filters := make(map[string]string)
+	filters["status"] = r.URL.Query().Get("status")
+	filters["severity"] = r.URL.Query().Get("severity")
+	filters["cluster_id"] = r.URL.Query().Get("cluster_id")
+	filters["category"] = r.URL.Query().Get("category")
+
+	findings, err := storage.FetchFindings(filters)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	w.WriteHeader(http.StatusOK)
+	err = json.NewEncoder(w).Encode(findings)
+	if err != nil {
+		return
+	}
+}
+
+func UpdateFindingHandler(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+
+	bodyBytes, err := io.ReadAll(r.Body)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	defer r.Body.Close()
+
+	var bodyData map[string]interface{}
+	err = json.Unmarshal(bodyBytes, &bodyData)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	findingIDValue, findingIDExists := bodyData["finding_id"]
+	statusValue, statusExists := bodyData["status"]
+
+	if !findingIDExists || !statusExists {
+		w.WriteHeader(http.StatusBadRequest)
+		errorResponse := map[string]string{
+			"error": "missing finding_id or status",
+		}
+		err := json.NewEncoder(w).Encode(errorResponse)
+		if err != nil {
+			return
+		}
+		return
+	}
+
+	findingID := int(findingIDValue.(float64))
+	status := statusValue.(string)
+
+	updateErr := storage.UpdateFindingStatus(findingID, status)
+	if updateErr != nil {
+		http.Error(w, updateErr.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	w.WriteHeader(http.StatusOK)
+	response := map[string]string{
+		"status": "updated",
 	}
 
 	err = json.NewEncoder(w).Encode(response)
