@@ -8,6 +8,7 @@ type ClusterDerived struct {
 	Workloads  []WorkloadEnriched  `json:"workloads"`
 	Nodes      []NodeEnriched      `json:"nodes"`
 	Namespaces []NamespaceEnriched `json:"namespaces"`
+	Pods       []PodEnriched       `json:"pods"`
 }
 
 type ImageEnriched struct {
@@ -40,4 +41,13 @@ type NamespaceEnriched struct {
 	ImageCount      int                   `json:"image_count"`
 	Vulnerabilities models.SeverityCounts `json:"vulnerabilities"`
 	Labels          map[string]string     `json:"labels"`
+}
+
+type PodEnriched struct {
+	Name         string   `json:"name"`
+	Namespace    string   `json:"namespace"`
+	NodeName     string   `json:"node_name"`
+	WorkloadName string   `json:"workload_name"`
+	WorkloadKind string   `json:"workload_kind"`
+	Images       []string `json:"images"`
 }

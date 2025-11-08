@@ -1,6 +1,7 @@
 package derived
 
 import (
+	"encoding/json"
 	"log"
 
 	"kuberule/backend/models"
@@ -19,6 +20,7 @@ func BuildDerived(clusterID string) (*ClusterDerived, error) {
 		Workloads:  []WorkloadEnriched{},
 		Nodes:      []NodeEnriched{},
 		Namespaces: []NamespaceEnriched{},
+		Pods:       []PodEnriched{},
 	}
 
 	if len(snapshots) == 0 {
@@ -87,6 +89,29 @@ func BuildDerived(clusterID string) (*ClusterDerived, error) {
 		clusterDerived.Images = append(clusterDerived.Images, *imageEnriched)
 	}
 
+	workloadsSnapshots, err := storage.FetchSnapshots(clusterID, "workloads")
+	if err != nil {
+		log.Printf("Error fetching workloads for cluster %s: %v\n", clusterID, err)
+	} else if len(workloadsSnapshots) > 0 {
+		latestWorkloadsSnapshot := workloadsSnapshots[0]
+		payloadValue, ok := latestWorkloadsSnapshot["payload"]
+		if ok {
+			switch v := payloadValue.(type) {
+			case string:
+				pods := parsePods(v)
+				clusterDerived.Pods = pods
+				log.Printf("Parsed %d pods from workloads snapshot\n", len(pods))
+			case map[string]interface{}:
+				payloadBytes, err := json.Marshal(v)
+				if err == nil {
+					pods := parsePods(string(payloadBytes))
+					clusterDerived.Pods = pods
+					log.Printf("Parsed %d pods from workloads snapshot\n", len(pods))
+				}
+			}
+		}
+	}
+
 	return clusterDerived, nil
 }
 
@@ -122,4 +147,108 @@ func countVulnerabilitiesBySeverity(vulnerabilities []interface{}) models.Severi
 	}
 
 	return severityCounts
+}
+
+func parsePods(workloadsPayload string) []PodEnriched {
+	podsEnriched := []PodEnriched{}
+
+	var payloadData map[string]interface{}
+	err := json.Unmarshal([]byte(workloadsPayload), &payloadData)
+	if err != nil {
+		log.Printf("Error unmarshaling workloads payload: %v\n", err)
+		return podsEnriched
+	}
+
+	podsInterface, ok := payloadData["pods"]
+	if !ok {
+		log.Println("No pods key found in workloads payload")
+		return podsEnriched
+	}
+
+	podsList, ok := podsInterface.([]interface{})
+	if !ok {
+		log.Println("Could not cast pods to array")
+		return podsEnriched
+	}
+
+	for _, podInterface := range podsList {
+		pod, ok := podInterface.(map[string]interface{})
+		if !ok {
+			continue
+		}
+
+		podName, ok := pod["name"].(string)
+		if !ok {
+			continue
+		}
+
+		podNamespace, ok := pod["namespace"].(string)
+		if !ok {
+			podNamespace = "default"
+		}
+
+		podNodeName, ok := pod["nodeName"].(string)
+		if !ok {
+			podNodeName = ""
+		}
+
+		workloadName := ""
+		workloadKind := ""
+
+		ownerReferencesInterface, hasOwnerReferences := pod["ownerReferences"]
+		if hasOwnerReferences {
+			ownerReferences, ok := ownerReferencesInterface.([]interface{})
+			if ok && len(ownerReferences) > 0 {
+				ownerRef, ok := ownerReferences[0].(map[string]interface{})
+				if ok {
+					wName, ok := ownerRef["name"].(string)
+					if ok {
+						workloadName = wName
+					}
+
+					wKind, ok := ownerRef["kind"].(string)
+					if ok {
+						workloadKind = wKind
+					}
+				}
+			}
+		}
+
+		images := []string{}
+
+		specInterface, hasSpec := pod["spec"]
+		if hasSpec {
+			spec, ok := specInterface.(map[string]interface{})
+			if ok {
+				containersInterface, hasContainers := spec["containers"]
+				if hasContainers {
+					containers, ok := containersInterface.([]interface{})
+					if ok {
+						for _, containerInterface := range containers {
+							container, ok := containerInterface.(map[string]interface{})
+							if ok {
+								imageString, ok := container["image"].(string)
+								if ok {
+									images = append(images, imageString)
+								}
+							}
+						}
+					}
+				}
+			}
+		}
+
+		podEnriched := PodEnriched{
+			Name:         podName,
+			Namespace:    podNamespace,
+			NodeName:     podNodeName,
+			WorkloadName: workloadName,
+			WorkloadKind: workloadKind,
+			Images:       images,
+		}
+
+		podsEnriched = append(podsEnriched, podEnriched)
+	}
+
+	return podsEnriched
 }
