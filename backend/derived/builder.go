@@ -116,6 +116,37 @@ func BuildDerived(clusterID string) (*ClusterDerived, error) {
 				workloads := parseWorkloads(workloadsPayloadString, clusterDerived.Pods, clusterDerived.Images)
 				clusterDerived.Workloads = workloads
 				log.Printf("Parsed %d workloads from workloads snapshot\n", len(workloads))
+
+				namespaces := parseNamespaces(workloadsPayloadString, clusterDerived.Workloads, clusterDerived.Images)
+				clusterDerived.Namespaces = namespaces
+				log.Printf("Parsed %d namespaces from workloads snapshot\n", len(namespaces))
+			}
+		}
+	}
+
+	nodesSnapshots, err := storage.FetchSnapshots(clusterID, "nodes")
+	if err != nil {
+		log.Printf("Error fetching nodes for cluster %s: %v\n", clusterID, err)
+	} else if len(nodesSnapshots) > 0 {
+		latestNodesSnapshot := nodesSnapshots[0]
+		payloadValue, ok := latestNodesSnapshot["payload"]
+		if ok {
+			var nodesPayloadString string
+
+			switch v := payloadValue.(type) {
+			case string:
+				nodesPayloadString = v
+			case map[string]interface{}:
+				payloadBytes, err := json.Marshal(v)
+				if err == nil {
+					nodesPayloadString = string(payloadBytes)
+				}
+			}
+
+			if nodesPayloadString != "" {
+				nodes := parseNodes(nodesPayloadString, clusterDerived.Pods, clusterDerived.Images)
+				clusterDerived.Nodes = nodes
+				log.Printf("Parsed %d nodes from nodes snapshot\n", len(nodes))
 			}
 		}
 	}
@@ -478,4 +509,203 @@ func parseWorkloads(workloadsPayload string, pods []PodEnriched, images []ImageE
 	}
 
 	return workloadsEnriched
+}
+
+func parseNodes(nodesPayload string, pods []PodEnriched, images []ImageEnriched) []NodeEnriched {
+	nodesEnriched := []NodeEnriched{}
+
+	var payloadData map[string]interface{}
+	err := json.Unmarshal([]byte(nodesPayload), &payloadData)
+	if err != nil {
+		log.Printf("Error unmarshaling nodes payload: %v\n", err)
+		return nodesEnriched
+	}
+
+	nodesInterface, ok := payloadData["nodes"]
+	if !ok {
+		log.Println("No nodes key found in nodes payload")
+		return nodesEnriched
+	}
+
+	nodesList, ok := nodesInterface.([]interface{})
+	if !ok {
+		log.Println("Could not cast nodes to array")
+		return nodesEnriched
+	}
+
+	imageMap := make(map[string]*ImageEnriched)
+	for index := range images {
+		imageMap[images[index].Name] = &images[index]
+	}
+
+	for _, nodeInterface := range nodesList {
+		node, ok := nodeInterface.(map[string]interface{})
+		if !ok {
+			continue
+		}
+
+		nodeName, ok := node["name"].(string)
+		if !ok {
+			continue
+		}
+
+		usedImages := []string{}
+		usedImagesMap := make(map[string]bool)
+		allNodeImages := []string{}
+
+		for _, pod := range pods {
+			if pod.NodeName == nodeName {
+				for _, image := range pod.Images {
+					if !usedImagesMap[image] {
+						usedImages = append(usedImages, image)
+						usedImagesMap[image] = true
+					}
+				}
+			}
+		}
+
+		nodeImagesInterface, hasNodeImages := node["images"]
+		if hasNodeImages {
+			nodeImagesList, ok := nodeImagesInterface.([]interface{})
+			if ok {
+				for _, imgInterface := range nodeImagesList {
+					imgStr, ok := imgInterface.(string)
+					if ok {
+						allNodeImages = append(allNodeImages, imgStr)
+					}
+				}
+			}
+		}
+
+		unusedImages := []string{}
+		unusedImagesMap := make(map[string]bool)
+
+		for _, nodeImage := range allNodeImages {
+			if !usedImagesMap[nodeImage] && !unusedImagesMap[nodeImage] {
+				unusedImages = append(unusedImages, nodeImage)
+				unusedImagesMap[nodeImage] = true
+			}
+		}
+
+		vulnerabilityCounts := models.SeverityCounts{
+			Critical: 0,
+			High:     0,
+			Medium:   0,
+			Low:      0,
+		}
+
+		for _, imageName := range usedImages {
+			if imageData, exists := imageMap[imageName]; exists {
+				vulnerabilityCounts.Critical += imageData.Vulnerabilities.Critical
+				vulnerabilityCounts.High += imageData.Vulnerabilities.High
+				vulnerabilityCounts.Medium += imageData.Vulnerabilities.Medium
+				vulnerabilityCounts.Low += imageData.Vulnerabilities.Low
+			}
+		}
+
+		nodeEnriched := NodeEnriched{
+			Name:            nodeName,
+			UsedImages:      usedImages,
+			UnusedImages:    unusedImages,
+			Vulnerabilities: vulnerabilityCounts,
+		}
+
+		nodesEnriched = append(nodesEnriched, nodeEnriched)
+	}
+
+	return nodesEnriched
+}
+
+func parseNamespaces(workloadsPayload string, workloads []WorkloadEnriched, images []ImageEnriched) []NamespaceEnriched {
+	namespacesEnriched := []NamespaceEnriched{}
+
+	var payloadData map[string]interface{}
+	err := json.Unmarshal([]byte(workloadsPayload), &payloadData)
+	if err != nil {
+		log.Printf("Error unmarshaling workloads payload for namespaces: %v\n", err)
+		return namespacesEnriched
+	}
+
+	namespaceWorkloadsMap := make(map[string]int)
+	namespaceImagesMap := make(map[string]map[string]bool)
+
+	for _, workload := range workloads {
+		namespaceWorkloadsMap[workload.Namespace]++
+
+		if _, exists := namespaceImagesMap[workload.Namespace]; !exists {
+			namespaceImagesMap[workload.Namespace] = make(map[string]bool)
+		}
+
+		for _, image := range workload.Images {
+			namespaceImagesMap[workload.Namespace][image] = true
+		}
+	}
+
+	namespacesInterface, hasNamespaces := payloadData["namespaces"]
+	if hasNamespaces {
+		namespacesList, ok := namespacesInterface.([]interface{})
+		if ok {
+			for _, namespaceInterface := range namespacesList {
+				namespace, ok := namespaceInterface.(map[string]interface{})
+				if !ok {
+					continue
+				}
+
+				namespaceName, ok := namespace["name"].(string)
+				if !ok {
+					continue
+				}
+
+				labelsInterface, hasLabels := namespace["labels"]
+				namespaceLabels := make(map[string]string)
+				if hasLabels {
+					labels, ok := labelsInterface.(map[string]interface{})
+					if ok {
+						for key, value := range labels {
+							valueStr, ok := value.(string)
+							if ok {
+								namespaceLabels[key] = valueStr
+							}
+						}
+					}
+				}
+
+				workloadCount := namespaceWorkloadsMap[namespaceName]
+				imageCount := len(namespaceImagesMap[namespaceName])
+
+				imageMap := make(map[string]*ImageEnriched)
+				for index := range images {
+					imageMap[images[index].Name] = &images[index]
+				}
+
+				vulnerabilityCounts := models.SeverityCounts{
+					Critical: 0,
+					High:     0,
+					Medium:   0,
+					Low:      0,
+				}
+
+				for imageName := range namespaceImagesMap[namespaceName] {
+					if imageData, exists := imageMap[imageName]; exists {
+						vulnerabilityCounts.Critical += imageData.Vulnerabilities.Critical
+						vulnerabilityCounts.High += imageData.Vulnerabilities.High
+						vulnerabilityCounts.Medium += imageData.Vulnerabilities.Medium
+						vulnerabilityCounts.Low += imageData.Vulnerabilities.Low
+					}
+				}
+
+				namespaceEnriched := NamespaceEnriched{
+					Name:            namespaceName,
+					WorkloadCount:   workloadCount,
+					ImageCount:      imageCount,
+					Vulnerabilities: vulnerabilityCounts,
+					Labels:          namespaceLabels,
+				}
+
+				namespacesEnriched = append(namespacesEnriched, namespaceEnriched)
+			}
+		}
+	}
+
+	return namespacesEnriched
 }

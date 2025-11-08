@@ -3,8 +3,10 @@ package api
 import (
 	"encoding/json"
 	"io"
+	"log"
 	"net/http"
 
+	"kuberule/backend/derived"
 	"kuberule/backend/guardrails"
 	"kuberule/backend/storage"
 )
@@ -16,6 +18,8 @@ func SetupRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("POST /guardrails/reload", corsMiddleware(ReloadGuardrailsHandler))
 	mux.HandleFunc("GET /findings", corsMiddleware(FindingsHandler))
 	mux.HandleFunc("POST /findings", corsMiddleware(UpdateFindingHandler))
+	mux.HandleFunc("GET /debug/derived", corsMiddleware(DerivedHandler))
+	mux.HandleFunc("GET /debug/raw", corsMiddleware(RawHandler))
 }
 
 func HealthCheck(w http.ResponseWriter, r *http.Request) {
@@ -215,6 +219,68 @@ func UpdateFindingHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	err = json.NewEncoder(w).Encode(response)
+	if err != nil {
+		return
+	}
+}
+
+func DerivedHandler(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+
+	clusterID := r.URL.Query().Get("cluster_id")
+	if clusterID == "" {
+		w.WriteHeader(http.StatusBadRequest)
+		errorResponse := map[string]string{
+			"error": "missing cluster_id query parameter",
+		}
+		err := json.NewEncoder(w).Encode(errorResponse)
+		if err != nil {
+			return
+		}
+		return
+	}
+
+	clusterDerived, err := derived.BuildDerived(clusterID)
+	if err != nil {
+		log.Printf("Error building derived data for cluster %s: %v\n", clusterID, err)
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	w.WriteHeader(http.StatusOK)
+	err = json.NewEncoder(w).Encode(clusterDerived)
+	if err != nil {
+		return
+	}
+}
+
+func RawHandler(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+
+	clusterID := r.URL.Query().Get("cluster_id")
+	kind := r.URL.Query().Get("kind")
+
+	if clusterID == "" || kind == "" {
+		w.WriteHeader(http.StatusBadRequest)
+		errorResponse := map[string]string{
+			"error": "missing cluster_id or kind query parameters",
+		}
+		err := json.NewEncoder(w).Encode(errorResponse)
+		if err != nil {
+			return
+		}
+		return
+	}
+
+	snapshots, err := storage.FetchSnapshots(clusterID, kind)
+	if err != nil {
+		log.Printf("Error fetching snapshots for cluster %s kind %s: %v\n", clusterID, kind, err)
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	w.WriteHeader(http.StatusOK)
+	err = json.NewEncoder(w).Encode(snapshots)
 	if err != nil {
 		return
 	}
