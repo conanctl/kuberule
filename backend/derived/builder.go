@@ -96,18 +96,26 @@ func BuildDerived(clusterID string) (*ClusterDerived, error) {
 		latestWorkloadsSnapshot := workloadsSnapshots[0]
 		payloadValue, ok := latestWorkloadsSnapshot["payload"]
 		if ok {
+			var workloadsPayloadString string
+
 			switch v := payloadValue.(type) {
 			case string:
-				pods := parsePods(v)
-				clusterDerived.Pods = pods
-				log.Printf("Parsed %d pods from workloads snapshot\n", len(pods))
+				workloadsPayloadString = v
 			case map[string]interface{}:
 				payloadBytes, err := json.Marshal(v)
 				if err == nil {
-					pods := parsePods(string(payloadBytes))
-					clusterDerived.Pods = pods
-					log.Printf("Parsed %d pods from workloads snapshot\n", len(pods))
+					workloadsPayloadString = string(payloadBytes)
 				}
+			}
+
+			if workloadsPayloadString != "" {
+				pods := parsePods(workloadsPayloadString)
+				clusterDerived.Pods = pods
+				log.Printf("Parsed %d pods from workloads snapshot\n", len(pods))
+
+				workloads := parseWorkloads(workloadsPayloadString, clusterDerived.Pods, clusterDerived.Images)
+				clusterDerived.Workloads = workloads
+				log.Printf("Parsed %d workloads from workloads snapshot\n", len(workloads))
 			}
 		}
 	}
@@ -251,4 +259,223 @@ func parsePods(workloadsPayload string) []PodEnriched {
 	}
 
 	return podsEnriched
+}
+
+func parseWorkloads(workloadsPayload string, pods []PodEnriched, images []ImageEnriched) []WorkloadEnriched {
+	workloadsEnriched := []WorkloadEnriched{}
+
+	var payloadData map[string]interface{}
+	err := json.Unmarshal([]byte(workloadsPayload), &payloadData)
+	if err != nil {
+		log.Printf("Error unmarshaling workloads payload: %v\n", err)
+		return workloadsEnriched
+	}
+
+	imageMap := make(map[string]*ImageEnriched)
+	for index := range images {
+		imageMap[images[index].Name] = &images[index]
+	}
+
+	deploymentsInterface, hasDeployments := payloadData["deployments"]
+	if hasDeployments {
+		deployments, ok := deploymentsInterface.([]interface{})
+		if ok {
+			for _, deploymentInterface := range deployments {
+				deployment, ok := deploymentInterface.(map[string]interface{})
+				if !ok {
+					continue
+				}
+
+				deploymentName, ok := deployment["name"].(string)
+				if !ok {
+					continue
+				}
+
+				deploymentNamespace, ok := deployment["namespace"].(string)
+				if !ok {
+					deploymentNamespace = "default"
+				}
+
+				workloadPodsCount := 0
+				workloadImages := []string{}
+				workloadImagesMap := make(map[string]bool)
+
+				for _, pod := range pods {
+					if pod.WorkloadName == deploymentName && pod.Namespace == deploymentNamespace {
+						workloadPodsCount++
+
+						for _, image := range pod.Images {
+							if !workloadImagesMap[image] {
+								workloadImages = append(workloadImages, image)
+								workloadImagesMap[image] = true
+							}
+						}
+					}
+				}
+
+				vulnerabilityCounts := models.SeverityCounts{
+					Critical: 0,
+					High:     0,
+					Medium:   0,
+					Low:      0,
+				}
+
+				for _, imageName := range workloadImages {
+					if imageData, exists := imageMap[imageName]; exists {
+						vulnerabilityCounts.Critical += imageData.Vulnerabilities.Critical
+						vulnerabilityCounts.High += imageData.Vulnerabilities.High
+						vulnerabilityCounts.Medium += imageData.Vulnerabilities.Medium
+						vulnerabilityCounts.Low += imageData.Vulnerabilities.Low
+					}
+				}
+
+				workloadEnriched := WorkloadEnriched{
+					Name:            deploymentName,
+					Kind:            "Deployment",
+					Namespace:       deploymentNamespace,
+					PodCount:        workloadPodsCount,
+					Images:          workloadImages,
+					Vulnerabilities: vulnerabilityCounts,
+				}
+
+				workloadsEnriched = append(workloadsEnriched, workloadEnriched)
+			}
+		}
+	}
+
+	statefulSetsInterface, hasStatefulSets := payloadData["statefulsets"]
+	if hasStatefulSets {
+		statefulSets, ok := statefulSetsInterface.([]interface{})
+		if ok {
+			for _, statefulSetInterface := range statefulSets {
+				statefulSet, ok := statefulSetInterface.(map[string]interface{})
+				if !ok {
+					continue
+				}
+
+				statefulSetName, ok := statefulSet["name"].(string)
+				if !ok {
+					continue
+				}
+
+				statefulSetNamespace, ok := statefulSet["namespace"].(string)
+				if !ok {
+					statefulSetNamespace = "default"
+				}
+
+				workloadPodsCount := 0
+				workloadImages := []string{}
+				workloadImagesMap := make(map[string]bool)
+
+				for _, pod := range pods {
+					if pod.WorkloadName == statefulSetName && pod.Namespace == statefulSetNamespace {
+						workloadPodsCount++
+
+						for _, image := range pod.Images {
+							if !workloadImagesMap[image] {
+								workloadImages = append(workloadImages, image)
+								workloadImagesMap[image] = true
+							}
+						}
+					}
+				}
+
+				vulnerabilityCounts := models.SeverityCounts{
+					Critical: 0,
+					High:     0,
+					Medium:   0,
+					Low:      0,
+				}
+
+				for _, imageName := range workloadImages {
+					if imageData, exists := imageMap[imageName]; exists {
+						vulnerabilityCounts.Critical += imageData.Vulnerabilities.Critical
+						vulnerabilityCounts.High += imageData.Vulnerabilities.High
+						vulnerabilityCounts.Medium += imageData.Vulnerabilities.Medium
+						vulnerabilityCounts.Low += imageData.Vulnerabilities.Low
+					}
+				}
+
+				workloadEnriched := WorkloadEnriched{
+					Name:            statefulSetName,
+					Kind:            "StatefulSet",
+					Namespace:       statefulSetNamespace,
+					PodCount:        workloadPodsCount,
+					Images:          workloadImages,
+					Vulnerabilities: vulnerabilityCounts,
+				}
+
+				workloadsEnriched = append(workloadsEnriched, workloadEnriched)
+			}
+		}
+	}
+
+	daemonSetsInterface, hasDaemonSets := payloadData["daemonsets"]
+	if hasDaemonSets {
+		daemonSets, ok := daemonSetsInterface.([]interface{})
+		if ok {
+			for _, daemonSetInterface := range daemonSets {
+				daemonSet, ok := daemonSetInterface.(map[string]interface{})
+				if !ok {
+					continue
+				}
+
+				daemonSetName, ok := daemonSet["name"].(string)
+				if !ok {
+					continue
+				}
+
+				daemonSetNamespace, ok := daemonSet["namespace"].(string)
+				if !ok {
+					daemonSetNamespace = "default"
+				}
+
+				workloadPodsCount := 0
+				workloadImages := []string{}
+				workloadImagesMap := make(map[string]bool)
+
+				for _, pod := range pods {
+					if pod.WorkloadName == daemonSetName && pod.Namespace == daemonSetNamespace {
+						workloadPodsCount++
+
+						for _, image := range pod.Images {
+							if !workloadImagesMap[image] {
+								workloadImages = append(workloadImages, image)
+								workloadImagesMap[image] = true
+							}
+						}
+					}
+				}
+
+				vulnerabilityCounts := models.SeverityCounts{
+					Critical: 0,
+					High:     0,
+					Medium:   0,
+					Low:      0,
+				}
+
+				for _, imageName := range workloadImages {
+					if imageData, exists := imageMap[imageName]; exists {
+						vulnerabilityCounts.Critical += imageData.Vulnerabilities.Critical
+						vulnerabilityCounts.High += imageData.Vulnerabilities.High
+						vulnerabilityCounts.Medium += imageData.Vulnerabilities.Medium
+						vulnerabilityCounts.Low += imageData.Vulnerabilities.Low
+					}
+				}
+
+				workloadEnriched := WorkloadEnriched{
+					Name:            daemonSetName,
+					Kind:            "DaemonSet",
+					Namespace:       daemonSetNamespace,
+					PodCount:        workloadPodsCount,
+					Images:          workloadImages,
+					Vulnerabilities: vulnerabilityCounts,
+				}
+
+				workloadsEnriched = append(workloadsEnriched, workloadEnriched)
+			}
+		}
+	}
+
+	return workloadsEnriched
 }
