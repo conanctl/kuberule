@@ -69,6 +69,17 @@ func (e *Evaluator) Evaluate(clusterID string) ([]map[string]interface{}, error)
 				"rationale":        guardrailEntry.Rationale,
 			}
 
+			for _, target := range targets {
+				checkPassed, evidence := e.evaluateCheck(guardrailEntry, target, clusterID)
+				if !checkPassed {
+					finding := e.createFinding(guardrailEntry, target, clusterID, evidence)
+					upsertErr := storage.UpsertFinding(finding)
+					if upsertErr != nil {
+						log.Printf("Error upserting finding: %v\n", upsertErr)
+					}
+				}
+			}
+
 			results = append(results, evaluationResult)
 		}
 	}
@@ -112,4 +123,159 @@ func (e *Evaluator) collectTargets(guardrailEntry models.GuardrailEntry, cluster
 		log.Printf("Warning: unknown target type %s\n", guardrailEntry.Target)
 		return make([]interface{}, 0)
 	}
+}
+
+func (e *Evaluator) evaluateCheck(guardrailEntry models.GuardrailEntry, target interface{}, clusterID string) (bool, map[string]interface{}) {
+	switch guardrailEntry.Check.Type {
+	case "vuln_threshold":
+		return e.checkVulnThreshold(target, guardrailEntry.Check.Params)
+	case "required_label":
+		return e.checkRequiredLabel(target, guardrailEntry.Check.Params)
+	case "unused_images_present":
+		return e.checkUnusedImages(target, guardrailEntry.Check.Params)
+	default:
+		log.Printf("Warning: unknown check type %s\n", guardrailEntry.Check.Type)
+		return true, make(map[string]interface{})
+	}
+}
+
+func (e *Evaluator) checkVulnThreshold(target interface{}, params map[string]interface{}) (bool, map[string]interface{}) {
+	imageEnriched, ok := target.(derived.ImageEnriched)
+	if !ok {
+		log.Printf("Warning: target is not ImageEnriched type\n")
+		return true, make(map[string]interface{})
+	}
+
+	maxCriticalInterface, hasMaxCritical := params["maxCritical"]
+	if !hasMaxCritical {
+		log.Printf("Warning: maxCritical parameter missing\n")
+		return true, make(map[string]interface{})
+	}
+
+	maxCriticalFloat, ok := maxCriticalInterface.(float64)
+	if !ok {
+		log.Printf("Warning: maxCritical is not a number\n")
+		return true, make(map[string]interface{})
+	}
+
+	maxCritical := int(maxCriticalFloat)
+
+	if imageEnriched.Vulnerabilities.Critical > maxCritical {
+		evidence := map[string]interface{}{
+			"critical":     imageEnriched.Vulnerabilities.Critical,
+			"high":         imageEnriched.Vulnerabilities.High,
+			"medium":       imageEnriched.Vulnerabilities.Medium,
+			"low":          imageEnriched.Vulnerabilities.Low,
+			"max_critical": maxCritical,
+		}
+		return false, evidence
+	}
+
+	return true, make(map[string]interface{})
+}
+
+func (e *Evaluator) checkRequiredLabel(target interface{}, params map[string]interface{}) (bool, map[string]interface{}) {
+	namespaceEnriched, ok := target.(derived.NamespaceEnriched)
+	if !ok {
+		log.Printf("Warning: target is not NamespaceEnriched type\n")
+		return true, make(map[string]interface{})
+	}
+
+	labelKeyInterface, hasLabelKey := params["labelKey"]
+	if !hasLabelKey {
+		log.Printf("Warning: labelKey parameter missing\n")
+		return true, make(map[string]interface{})
+	}
+
+	labelKey, ok := labelKeyInterface.(string)
+	if !ok {
+		log.Printf("Warning: labelKey is not a string\n")
+		return true, make(map[string]interface{})
+	}
+
+	_, labelExists := namespaceEnriched.Labels[labelKey]
+	if !labelExists {
+		evidence := map[string]interface{}{
+			"missing_label":  labelKey,
+			"present_labels": namespaceEnriched.Labels,
+		}
+		return false, evidence
+	}
+
+	return true, make(map[string]interface{})
+}
+
+func (e *Evaluator) checkUnusedImages(target interface{}, params map[string]interface{}) (bool, map[string]interface{}) {
+	nodeEnriched, ok := target.(derived.NodeEnriched)
+	if !ok {
+		log.Printf("Warning: target is not NodeEnriched type\n")
+		return true, make(map[string]interface{})
+	}
+
+	maxUnusedInterface, hasMaxUnused := params["maxUnused"]
+	if !hasMaxUnused {
+		log.Printf("Warning: maxUnused parameter missing\n")
+		return true, make(map[string]interface{})
+	}
+
+	maxUnusedFloat, ok := maxUnusedInterface.(float64)
+	if !ok {
+		log.Printf("Warning: maxUnused is not a number\n")
+		return true, make(map[string]interface{})
+	}
+
+	maxUnused := int(maxUnusedFloat)
+
+	if len(nodeEnriched.UnusedImages) > maxUnused {
+		evidence := map[string]interface{}{
+			"unused_count":  len(nodeEnriched.UnusedImages),
+			"max_unused":    maxUnused,
+			"unused_images": nodeEnriched.UnusedImages,
+		}
+		return false, evidence
+	}
+
+	return true, make(map[string]interface{})
+}
+
+func (e *Evaluator) createFinding(guardrailEntry models.GuardrailEntry, target interface{}, clusterID string, evidence map[string]interface{}) map[string]interface{} {
+	targetIdentifier := ""
+	targetType := guardrailEntry.Target
+	namespace := ""
+
+	switch t := target.(type) {
+	case derived.ImageEnriched:
+		targetIdentifier = t.Name
+	case derived.WorkloadEnriched:
+		targetIdentifier = t.Name
+		namespace = t.Namespace
+	case derived.NodeEnriched:
+		targetIdentifier = t.Name
+	case derived.NamespaceEnriched:
+		targetIdentifier = t.Name
+		namespace = t.Name
+	case derived.PodEnriched:
+		targetIdentifier = t.Name
+		namespace = t.Namespace
+	default:
+		log.Printf("Warning: unknown target type for finding\n")
+		targetIdentifier = "unknown"
+	}
+
+	finding := map[string]interface{}{
+		"guardrail_id":      guardrailEntry.ID,
+		"title":             guardrailEntry.Title,
+		"category":          guardrailEntry.Category,
+		"severity":          guardrailEntry.Severity,
+		"target_type":       targetType,
+		"target_identifier": targetIdentifier,
+		"cluster_id":        clusterID,
+		"namespace":         namespace,
+		"status":            "open",
+		"evidence":          evidence,
+		"remediation_hint":  guardrailEntry.RemediationHint,
+		"owner_label_value": "",
+	}
+
+	return finding
 }
