@@ -16,6 +16,7 @@ func SetupRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("POST /ingest", corsMiddleware(IngestHandler))
 	mux.HandleFunc("GET /guardrails", corsMiddleware(GuardrailsHandler))
 	mux.HandleFunc("POST /guardrails/reload", corsMiddleware(ReloadGuardrailsHandler))
+	mux.HandleFunc("GET /guardrails/evaluate", corsMiddleware(EvaluateGuardrailsHandler))
 	mux.HandleFunc("GET /findings", corsMiddleware(FindingsHandler))
 	mux.HandleFunc("POST /findings", corsMiddleware(UpdateFindingHandler))
 	mux.HandleFunc("GET /debug/derived", corsMiddleware(DerivedHandler))
@@ -281,6 +282,37 @@ func RawHandler(w http.ResponseWriter, r *http.Request) {
 
 	w.WriteHeader(http.StatusOK)
 	err = json.NewEncoder(w).Encode(snapshots)
+	if err != nil {
+		return
+	}
+}
+
+func EvaluateGuardrailsHandler(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+
+	clusterID := r.URL.Query().Get("cluster_id")
+	if clusterID == "" {
+		w.WriteHeader(http.StatusBadRequest)
+		errorResponse := map[string]string{
+			"error": "missing cluster_id query parameter",
+		}
+		err := json.NewEncoder(w).Encode(errorResponse)
+		if err != nil {
+			return
+		}
+		return
+	}
+
+	evaluator := guardrails.NewEvaluator(storage.DB)
+	evaluationResults, err := evaluator.Evaluate(clusterID)
+	if err != nil {
+		log.Printf("Error evaluating guardrails for cluster %s: %v\n", clusterID, err)
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	w.WriteHeader(http.StatusOK)
+	err = json.NewEncoder(w).Encode(evaluationResults)
 	if err != nil {
 		return
 	}
