@@ -74,6 +74,58 @@ while true; do
     -d "$REQUEST_BODY" \
     2>/dev/null || echo "Failed to send workloads"
 
+  echo "collecting nodes"
+
+  NODES=$(kubectl get nodes -o json 2>/dev/null || true)
+
+  if [ -n "$NODES" ]; then
+    REQUEST_BODY=$(jq -n \
+      --arg cid "$CLUSTER_ID" \
+      --arg kind "nodes" \
+      --argjson payload "$NODES" \
+      '{cluster_id: $cid, kind: $kind, payload: $payload}')
+
+    curl -X POST "$BACKEND_ENDPOINT/ingest" \
+      -H "Content-Type: application/json" \
+      -d "$REQUEST_BODY" \
+      2>/dev/null || echo "Failed to send nodes"
+  fi
+
+  echo "scanning images"
+
+  IMAGES=$(kubectl get pods --all-namespaces -o json | \
+    jq -r '.items[] | .spec.containers[]?, .spec.initContainers[]? | .image' | \
+    sort -u)
+
+  IMAGE_SCANS="["
+  FIRST=true
+
+  for IMAGE in $IMAGES; do
+    echo "scanning image: $IMAGE"
+    SCAN=$(timeout 120 trivy image --quiet --format json "$IMAGE" 2>/dev/null || echo '{}')
+
+    if [ "$FIRST" = true ]; then
+      FIRST=false
+    else
+      IMAGE_SCANS="${IMAGE_SCANS},"
+    fi
+
+    IMAGE_SCANS="${IMAGE_SCANS}${SCAN}"
+  done
+
+  IMAGE_SCANS="${IMAGE_SCANS}]"
+
+  REQUEST_BODY=$(jq -n \
+    --arg cid "$CLUSTER_ID" \
+    --arg kind "image-scans" \
+    --argjson payload "$IMAGE_SCANS" \
+    '{cluster_id: $cid, kind: $kind, payload: $payload}')
+
+  curl -X POST "$BACKEND_ENDPOINT/ingest" \
+    -H "Content-Type: application/json" \
+    -d "$REQUEST_BODY" \
+    2>/dev/null || echo "error: failed to send image scans"
+
   echo "sleeping for 60 seconds..."
   sleep 60
 done
