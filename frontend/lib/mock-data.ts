@@ -1,4 +1,230 @@
-import { Finding } from "./types"
+import { Finding, GuardrailPack } from "./types"
+
+export const mockGuardrails: GuardrailPack[] = [
+  {
+    id: 1,
+    name: "kube-security",
+    version: "1.0.0",
+    loaded_at: "2026-02-01T10:00:00Z",
+    pack: {
+      metadata: {
+        name: "kube-security",
+        version: "1.0.0",
+      },
+      spec: {
+        description: "Kubernetes security best practices and hardening guardrails",
+        owner: "security-team",
+        guardrails: [
+          {
+            id: "gr-001",
+            title: "Pod Security Policy Enforcement",
+            category: "Security",
+            severity: "critical",
+            target: "Pod",
+            check: {
+              type: "pod_security_policy",
+              params: {
+                allowPrivileged: false,
+                runAsNonRoot: true,
+              },
+            },
+            remediationHint: "Apply security context with restrictive policies",
+            rationale: "Prevents privilege escalation and unauthorized container access",
+          },
+          {
+            id: "gr-002",
+            title: "Resource Limits and Requests",
+            category: "Resource Management",
+            severity: "high",
+            target: "Deployment",
+            check: {
+              type: "resource_limits",
+              params: {
+                requireLimits: true,
+                requireRequests: true,
+              },
+            },
+            remediationHint: "Define CPU and memory limits for all containers",
+            rationale: "Ensures fair resource allocation and prevents resource starvation",
+          },
+          {
+            id: "gr-003",
+            title: "Image Scanning and Vulnerability Check",
+            category: "Image Security",
+            severity: "high",
+            target: "Pod",
+            check: {
+              type: "image_scan",
+              params: {
+                registry: "trusted",
+                maxSeverity: "medium",
+              },
+            },
+            remediationHint: "Use only scanned images from trusted registries",
+            rationale: "Prevents deployment of vulnerable container images",
+          },
+          {
+            id: "gr-004",
+            title: "Network Policy Enforcement",
+            category: "Network Security",
+            severity: "high",
+            target: "Namespace",
+            check: {
+              type: "network_policy",
+              params: {
+                required: true,
+              },
+            },
+            remediationHint: "Implement ingress and egress network policies",
+            rationale: "Controls traffic flow and prevents lateral movement",
+          },
+        ],
+      },
+    },
+  },
+  {
+    id: 2,
+    name: "compliance-standards",
+    version: "2.1.0",
+    loaded_at: "2026-02-01T10:15:00Z",
+    pack: {
+      metadata: {
+        name: "compliance-standards",
+        version: "2.1.0",
+      },
+      spec: {
+        description: "Compliance and regulatory requirements guardrails",
+        owner: "compliance-team",
+        guardrails: [
+          {
+            id: "gr-005",
+            title: "RBAC Configuration Validation",
+            category: "Compliance",
+            severity: "high",
+            target: "ClusterRole",
+            check: {
+              type: "rbac_validation",
+              params: {
+                allowWildcards: false,
+              },
+            },
+            remediationHint: "Use principle of least privilege for RBAC roles",
+            rationale: "Enforces least privilege access control",
+          },
+          {
+            id: "gr-006",
+            title: "Audit Logging Configuration",
+            category: "Compliance",
+            severity: "medium",
+            target: "Cluster",
+            check: {
+              type: "audit_logging",
+              params: {
+                enabled: true,
+              },
+            },
+            remediationHint: "Enable and configure audit logging for the cluster",
+            rationale: "Provides audit trail for compliance and security investigations",
+          },
+          {
+            id: "gr-007",
+            title: "Data Encryption at Rest",
+            category: "Compliance",
+            severity: "high",
+            target: "PersistentVolume",
+            check: {
+              type: "encryption_at_rest",
+              params: {
+                required: true,
+              },
+            },
+            remediationHint: "Enable encryption for storage backends",
+            rationale: "Protects sensitive data from unauthorized access",
+          },
+        ],
+      },
+    },
+  },
+  {
+    id: 3,
+    name: "operational-hygiene",
+    version: "1.5.2",
+    loaded_at: "2026-02-01T10:30:00Z",
+    pack: {
+      metadata: {
+        name: "operational-hygiene",
+        version: "1.5.2",
+      },
+      spec: {
+        description: "Operational best practices and cluster hygiene",
+        owner: "infrastructure-team",
+        guardrails: [
+          {
+            id: "gr-008",
+            title: "Container Image Registry Validation",
+            category: "Hygiene",
+            severity: "medium",
+            target: "Pod",
+            check: {
+              type: "registry_validation",
+              params: {
+                allowedRegistries: ["registry.company.com", "ghcr.io"],
+              },
+            },
+            remediationHint: "Use only approved container image registries",
+            rationale: "Ensures image provenance and reduces supply chain risk",
+          },
+          {
+            id: "gr-009",
+            title: "Label and Annotation Standards",
+            category: "Hygiene",
+            severity: "low",
+            target: "Pod",
+            check: {
+              type: "label_validation",
+              params: {
+                requiredLabels: ["app", "version", "owner"],
+              },
+            },
+            remediationHint: "Add required labels to all Kubernetes objects",
+            rationale: "Enables proper resource tracking and management",
+          },
+          {
+            id: "gr-010",
+            title: "Pod Disruption Budget Configuration",
+            category: "Hygiene",
+            severity: "medium",
+            target: "Deployment",
+            check: {
+              type: "pdb_check",
+              params: {
+                required: true,
+              },
+            },
+            remediationHint: "Define Pod Disruption Budgets for high availability",
+            rationale: "Ensures application availability during maintenance",
+          },
+          {
+            id: "gr-011",
+            title: "Health Check Configuration",
+            category: "Hygiene",
+            severity: "medium",
+            target: "Pod",
+            check: {
+              type: "health_checks",
+              params: {
+                requireLiveness: true,
+                requireReadiness: true,
+              },
+            },
+            remediationHint: "Configure liveness and readiness probes",
+            rationale: "Enables automatic container recovery and traffic management",
+          },
+        ],
+      },
+    },
+  },
+]
 
 export const mockFindings: Finding[] = [
   {

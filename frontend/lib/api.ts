@@ -1,4 +1,4 @@
-import { mockFindings } from "./mock-data"
+import { mockFindings, mockGuardrails } from "./mock-data"
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE || "http://localhost:18081"
 
@@ -46,9 +46,13 @@ export async function updateFindingStatus(findingId: number, status: string) {
 }
 
 export async function getGuardrails() {
-  const response = await fetch(`${API_BASE}/guardrails`)
-  if (!response.ok) {
-    throw new Error("Failed to fetch guardrails")
+  try {
+    const response = await fetch(`${API_BASE}/guardrails`)
+    if (!response.ok) {
+      throw new Error("Failed to fetch guardrails")
+    }
+    return response.json()
+  } catch {
+    return mockGuardrails
   }
-  return response.json()
 }
