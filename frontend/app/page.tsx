@@ -62,7 +62,7 @@ export default function Dashboard() {
 
   return (
     <div>
-      <h1 className="text-3xl font-bold mb-8 text-gray-900">Command Center</h1>
+      <h1 className="text-3xl font-bold mb-8 text-black">Command Center</h1>
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
         <MetricCard
@@ -140,7 +140,7 @@ export default function Dashboard() {
           <div className="space-y-2">
             {topClusters.map((cluster) => (
               <div key={cluster.cluster} className="flex justify-between items-center p-3 bg-gray-50 rounded">
-                <span className="font-medium">{cluster.cluster}</span>
+                <span className="font-medium text-black">{cluster.cluster}</span>
                 <span className="text-red-600 font-bold">Risk: {cluster.risk.toFixed(1)}</span>
               </div>
             ))}

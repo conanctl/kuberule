@@ -10,14 +10,14 @@ export function MetricCard({ title, value, subtitle }: MetricCardProps) {
   return (
     <Card>
       <CardHeader>
-        <CardTitle className="text-sm font-medium text-gray-600">
+        <CardTitle className="text-sm font-medium text-black">
           {title}
         </CardTitle>
       </CardHeader>
       <CardContent>
-        <div className="text-3xl font-bold text-gray-900">{value}</div>
+        <div className="text-3xl font-bold text-black">{value}</div>
         {subtitle && (
-          <p className="text-sm text-gray-500 mt-1">{subtitle}</p>
+          <p className="text-sm text-black mt-1">{subtitle}</p>
         )}
       </CardContent>
     </Card>
