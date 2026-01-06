@@ -1,4 +1,4 @@
-import { mockFindings, mockGuardrails } from "./mock-data"
+import { mockFindings, mockGuardrails, mockDerived } from "./mock-data"
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE || "http://localhost:18081"
 
@@ -54,5 +54,17 @@ export async function getGuardrails() {
     return response.json()
   } catch {
     return mockGuardrails
+  }
+}
+
+export async function getDerived(clusterId: string) {
+  try {
+    const response = await fetch(`${API_BASE}/debug/derived?cluster_id=${clusterId}`)
+    if (!response.ok) {
+      throw new Error("Failed to fetch derived data")
+    }
+    return response.json()
+  } catch {
+    return mockDerived
   }
 }

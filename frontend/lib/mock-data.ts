@@ -1,4 +1,4 @@
-import { Finding, GuardrailPack } from "./types"
+import { Finding, GuardrailPack, ImageEnriched, WorkloadEnriched, NamespaceEnriched, NodeEnriched } from "./types"
 
 export const mockGuardrails: GuardrailPack[] = [
   {
@@ -330,3 +330,150 @@ export const mockFindings: Finding[] = [
     owner_label_value: "platform-team",
   },
 ]
+
+export const mockDerived = {
+  images: [
+    {
+      name: "nginx:1.21.0",
+      vulnerabilities: { critical: 2, high: 5, medium: 12, low: 8 },
+      used_by: ["web-server-deployment", "api-gateway"],
+      nodes: ["node-1", "node-2", "node-3"],
+      status: "in-use",
+    },
+    {
+      name: "postgres:14.2",
+      vulnerabilities: { critical: 0, high: 1, medium: 3, low: 2 },
+      used_by: ["database-statefulset"],
+      nodes: ["node-2"],
+      status: "in-use",
+    },
+    {
+      name: "redis:7.0",
+      vulnerabilities: { critical: 1, high: 2, medium: 4, low: 1 },
+      used_by: ["cache-deployment"],
+      nodes: ["node-1", "node-3"],
+      status: "in-use",
+    },
+    {
+      name: "ubuntu:18.04",
+      vulnerabilities: { critical: 5, high: 12, medium: 25, low: 15 },
+      used_by: ["legacy-app"],
+      nodes: ["node-2"],
+      status: "in-use",
+    },
+    {
+      name: "alpine:3.15",
+      vulnerabilities: { critical: 0, high: 0, medium: 1, low: 0 },
+      used_by: ["monitoring-sidecar", "debug-pod"],
+      nodes: ["node-1"],
+      status: "in-use",
+    },
+    {
+      name: "node:16.13.0",
+      vulnerabilities: { critical: 3, high: 8, medium: 18, low: 10 },
+      used_by: [],
+      nodes: [],
+      status: "unused",
+    },
+  ] as ImageEnriched[],
+  workloads: [
+    {
+      name: "web-server-deployment",
+      kind: "Deployment",
+      namespace: "production",
+      pod_count: 3,
+      images: ["nginx:1.21.0"],
+      vulnerabilities: { critical: 2, high: 5, medium: 12, low: 8 },
+    },
+    {
+      name: "api-gateway",
+      kind: "Deployment",
+      namespace: "production",
+      pod_count: 2,
+      images: ["nginx:1.21.0"],
+      vulnerabilities: { critical: 2, high: 5, medium: 12, low: 8 },
+    },
+    {
+      name: "database-statefulset",
+      kind: "StatefulSet",
+      namespace: "production",
+      pod_count: 1,
+      images: ["postgres:14.2"],
+      vulnerabilities: { critical: 0, high: 1, medium: 3, low: 2 },
+    },
+    {
+      name: "cache-deployment",
+      kind: "Deployment",
+      namespace: "production",
+      pod_count: 2,
+      images: ["redis:7.0"],
+      vulnerabilities: { critical: 1, high: 2, medium: 4, low: 1 },
+    },
+    {
+      name: "legacy-app",
+      kind: "Deployment",
+      namespace: "staging",
+      pod_count: 1,
+      images: ["ubuntu:18.04"],
+      vulnerabilities: { critical: 5, high: 12, medium: 25, low: 15 },
+    },
+    {
+      name: "monitoring-sidecar",
+      kind: "DaemonSet",
+      namespace: "kube-system",
+      pod_count: 3,
+      images: ["alpine:3.15"],
+      vulnerabilities: { critical: 0, high: 0, medium: 1, low: 0 },
+    },
+  ] as WorkloadEnriched[],
+  namespaces: [
+    {
+      name: "production",
+      workload_count: 4,
+      image_count: 5,
+      vulnerabilities: { critical: 3, high: 8, medium: 19, low: 11 },
+      labels: { env: "prod", team: "platform" },
+    },
+    {
+      name: "staging",
+      workload_count: 1,
+      image_count: 1,
+      vulnerabilities: { critical: 5, high: 12, medium: 25, low: 15 },
+      labels: { env: "staging", team: "qa" },
+    },
+    {
+      name: "kube-system",
+      workload_count: 1,
+      image_count: 1,
+      vulnerabilities: { critical: 0, high: 0, medium: 1, low: 0 },
+      labels: { namespace: "system" },
+    },
+    {
+      name: "default",
+      workload_count: 2,
+      image_count: 2,
+      vulnerabilities: { critical: 1, high: 3, medium: 8, low: 5 },
+      labels: { },
+    },
+  ] as NamespaceEnriched[],
+  nodes: [
+    {
+      name: "node-1",
+      used_images: ["nginx:1.21.0", "redis:7.0", "alpine:3.15"],
+      unused_images: ["postgres:14.2"],
+      vulnerabilities: { critical: 3, high: 7, medium: 17, low: 9 },
+    },
+    {
+      name: "node-2",
+      used_images: ["nginx:1.21.0", "postgres:14.2", "ubuntu:18.04"],
+      unused_images: ["redis:7.0"],
+      vulnerabilities: { critical: 5, high: 13, medium: 28, low: 17 },
+    },
+    {
+      name: "node-3",
+      used_images: ["nginx:1.21.0", "redis:7.0"],
+      unused_images: ["alpine:3.15"],
+      vulnerabilities: { critical: 2, high: 5, medium: 12, low: 8 },
+    },
+  ] as NodeEnriched[],
+}

@@ -54,3 +54,35 @@ export interface GuardrailEntry {
   remediationHint: string
   rationale: string
 }
+
+export interface ImageEnriched {
+  name: string
+  vulnerabilities: SeverityCounts
+  used_by: string[]
+  nodes: string[]
+  status: string
+}
+
+export interface WorkloadEnriched {
+  name: string
+  kind: string
+  namespace: string
+  pod_count: number
+  images: string[]
+  vulnerabilities: SeverityCounts
+}
+
+export interface NodeEnriched {
+  name: string
+  used_images: string[]
+  unused_images: string[]
+  vulnerabilities: SeverityCounts
+}
+
+export interface NamespaceEnriched {
+  name: string
+  workload_count: number
+  image_count: number
+  vulnerabilities: SeverityCounts
+  labels: Record<string, string>
+}
