@@ -63,7 +63,7 @@ export default function AssetsPage() {
   const workloadColumns: ColumnDef<WorkloadEnriched>[] = [
     {
       accessorKey: "name",
-      header: "Workload Name",
+      header: "Name",
     },
     {
       accessorKey: "kind",
@@ -75,10 +75,7 @@ export default function AssetsPage() {
     },
     {
       accessorKey: "pod_count",
-      header: "Pod Count",
-      cell: ({ row }) => {
-        return <span className="text-black">{row.getValue("pod_count")}</span>
-      },
+      header: "Pods",
     },
     {
       accessorKey: "images",
