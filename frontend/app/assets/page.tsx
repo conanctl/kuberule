@@ -97,21 +97,15 @@ export default function AssetsPage() {
   const namespaceColumns: ColumnDef<NamespaceEnriched>[] = [
     {
       accessorKey: "name",
-      header: "Namespace Name",
+      header: "Name",
     },
     {
       accessorKey: "workload_count",
       header: "Workloads",
-      cell: ({ row }) => {
-        return <span className="text-black">{row.getValue("workload_count")}</span>
-      },
     },
     {
       accessorKey: "image_count",
       header: "Images",
-      cell: ({ row }) => {
-        return <span className="text-black">{row.getValue("image_count")}</span>
-      },
     },
     {
       accessorKey: "vulnerabilities",
@@ -125,7 +119,7 @@ export default function AssetsPage() {
   const nodeColumns: ColumnDef<NodeEnriched>[] = [
     {
       accessorKey: "name",
-      header: "Node Name",
+      header: "Name",
     },
     {
       accessorKey: "used_images",
