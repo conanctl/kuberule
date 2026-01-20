@@ -6,6 +6,7 @@ import { MetricCard } from "@/components/shared/metric-card"
 import { Finding } from "@/lib/types"
 import { PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer } from "recharts"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { Badge } from "@/components/ui/badge"
 
 export default function Dashboard() {
   const { data: findings, isLoading } = useQuery({
@@ -145,6 +146,41 @@ export default function Dashboard() {
               </div>
             ))}
           </div>
+        </CardContent>
+      </Card>
+
+      <Card className="mt-8">
+        <CardHeader>
+          <CardTitle>Recent Critical & High Findings</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <table className="w-full">
+            <thead>
+              <tr className="border-b">
+                <th className="text-left py-2 text-black">Severity</th>
+                <th className="text-left py-2 text-black">Title</th>
+                <th className="text-left py-2 text-black">Target</th>
+                <th className="text-left py-2 text-black">Cluster</th>
+                <th className="text-left py-2 text-black">First Seen</th>
+              </tr>
+            </thead>
+            <tbody>
+              {findingsList
+                .filter((f: Finding) => f.severity === "critical" || f.severity === "high")
+                .slice(0, 10)
+                .map((finding: Finding) => (
+                  <tr key={finding.id} className="border-b">
+                    <td className="py-2">
+                      <Badge variant={finding.severity as any}>{finding.severity}</Badge>
+                    </td>
+                    <td className="py-2 text-black">{finding.title}</td>
+                    <td className="py-2 text-black">{finding.target_identifier}</td>
+                    <td className="py-2 text-black">{finding.cluster_id}</td>
+                    <td className="py-2 text-black">{new Date(finding.first_seen_at).toLocaleDateString()}</td>
+                  </tr>
+                ))}
+            </tbody>
+          </table>
         </CardContent>
       </Card>
     </div>
