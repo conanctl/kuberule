@@ -1,1 +1,19 @@
-version: '3.8'
+version: "3.8"
+
+services:
+  backend:
+    image: golang:1.22
+    working_dir: /app
+    volumes:
+      - ./backend:/app
+    environment:
+      - PORT=18081
+      - DATABASE_URL=postgres://user:pass@localhost/kuberule?sslmode=disable
+    command: ["go", "run", "main.go"]
+    ports:
+      - "18081:18081"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:18081/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
