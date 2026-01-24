@@ -2,6 +2,7 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: kuberule-agent
+  namespace: {{ .Release.Namespace }}
   labels:
     app: kuberule-agent
 spec:
@@ -16,14 +17,14 @@ spec:
     spec:
       serviceAccountName: {{ .Values.serviceAccount.name }}
       containers:
-      - name: kuberule-agent
+      - name: agent
         image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
         imagePullPolicy: {{ .Values.image.pullPolicy }}
         env:
         - name: BACKEND_ENDPOINT
-          value: "{{ .Values.backend.endpoint }}"
+          value: {{ .Values.backend.endpoint }}
         - name: CLUSTER_ID
-          value: "{{ .Values.cluster.id }}"
+          value: {{ .Values.cluster.id }}
         resources:
           limits:
             cpu: {{ .Values.resources.limits.cpu }}
