@@ -1,0 +1,6 @@
+apiVersion: v2
+name: kuberule-agent
+description: Kuberule agent for cluster scanning
+type: application
+version: 1.0.0
+appVersion: "1.0.0"

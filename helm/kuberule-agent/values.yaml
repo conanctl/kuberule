@@ -1,0 +1,22 @@
+image:
+  repository: kuberule-agent
+  tag: latest
+  pullPolicy: IfNotPresent
+
+backend:
+  endpoint: http://backend:18081
+
+cluster:
+  id: ""
+
+resources:
+  limits:
+    cpu: 200m
+    memory: 256Mi
+  requests:
+    cpu: 100m
+    memory: 128Mi
+
+serviceAccount:
+  create: true
+  name: kuberule-agent
