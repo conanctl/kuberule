@@ -34,6 +34,38 @@
             "value": "kube-system"
           }
         ]
+      },
+      {
+        "id": "GR-NS-001",
+        "title": "Namespaces must have team label",
+        "category": "compliance",
+        "severity": "medium",
+        "target": "namespace",
+        "check": {
+          "type": "required_label",
+          "params": {
+            "key": "team"
+          }
+        },
+        "remediationHint": "Add team label to namespace for ownership tracking",
+        "rationale": "Team labels enable ownership and cost allocation",
+        "exceptions": []
+      },
+      {
+        "id": "GR-ND-001",
+        "title": "Nodes should have no unused images",
+        "category": "hygiene",
+        "severity": "low",
+        "target": "node",
+        "check": {
+          "type": "unused_images_present",
+          "params": {
+            "maxUnused": 0
+          }
+        },
+        "remediationHint": "Prune unused images to reclaim disk space",
+        "rationale": "Unused images consume storage and may contain unpatched vulnerabilities",
+        "exceptions": []
       }
     ]
   }
