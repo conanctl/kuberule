@@ -18,7 +18,7 @@ export default function FindingsPage() {
 
   const queryClient = useQueryClient()
 
-  const { data: findings, isLoading } = useQuery({
+  const { data: findings, isLoading, error } = useQuery({
     queryKey: ["findings"],
     queryFn: () => getFindings(),
   })
@@ -33,7 +33,19 @@ export default function FindingsPage() {
   })
 
   if (isLoading) {
-    return <div>Loading...</div>
+    return (
+      <div className="flex items-center justify-center h-64">
+        <div className="text-lg text-black">Loading...</div>
+      </div>
+    )
+  }
+
+  if (error) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <div className="text-red-600">Error loading data</div>
+      </div>
+    )
   }
 
   let findingsList = findings || []

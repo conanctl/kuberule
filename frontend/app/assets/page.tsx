@@ -12,13 +12,25 @@ import { useState } from "react"
 export default function AssetsPage() {
   const [clusterId, setClusterId] = useState("default")
 
-  const { data: derived, isLoading } = useQuery({
+  const { data: derived, isLoading, error } = useQuery({
     queryKey: ["derived", clusterId],
     queryFn: () => getDerived(clusterId),
   })
 
   if (isLoading) {
-    return <div className="text-black">Loading...</div>
+    return (
+      <div className="flex items-center justify-center h-64">
+        <div className="text-lg text-black">Loading...</div>
+      </div>
+    )
+  }
+
+  if (error) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <div className="text-red-600">Error loading data</div>
+      </div>
+    )
   }
 
   const images = derived?.images || []

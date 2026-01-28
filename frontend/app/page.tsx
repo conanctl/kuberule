@@ -9,13 +9,25 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 
 export default function Dashboard() {
-  const { data: findings, isLoading } = useQuery({
+  const { data: findings, isLoading, error } = useQuery({
     queryKey: ["findings"],
     queryFn: () => getFindings(),
   })
 
   if (isLoading) {
-    return <div>Loading...</div>
+    return (
+      <div className="flex items-center justify-center h-64">
+        <div className="text-lg text-black">Loading...</div>
+      </div>
+    )
+  }
+
+  if (error) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <div className="text-red-600">Error loading data</div>
+      </div>
+    )
   }
 
   const findingsList = findings || []

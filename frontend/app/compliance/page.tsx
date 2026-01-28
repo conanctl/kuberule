@@ -8,15 +8,34 @@ import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer } from "recha
 import { Finding, GuardrailPack } from "@/lib/types"
 
 export default function CompliancePage() {
-  const { data: findings } = useQuery({
+  const { data: findings, isLoading: findingsLoading, error: findingsError } = useQuery({
     queryKey: ["findings"],
     queryFn: () => getFindings(),
   })
 
-  const { data: packs } = useQuery({
+  const { data: packs, isLoading: packsLoading, error: packsError } = useQuery({
     queryKey: ["guardrails"],
     queryFn: () => getGuardrails(),
   })
+
+  const isLoading = findingsLoading || packsLoading
+  const error = findingsError || packsError
+
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <div className="text-lg text-black">Loading...</div>
+      </div>
+    )
+  }
+
+  if (error) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <div className="text-red-600">Error loading data</div>
+      </div>
+    )
+  }
 
   const findingsList = findings || []
   const packsList = packs || []
