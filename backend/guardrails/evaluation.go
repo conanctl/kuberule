@@ -70,6 +70,9 @@ func (e *Evaluator) Evaluate(clusterID string) ([]map[string]interface{}, error)
 			}
 
 			for _, target := range targets {
+				if shouldSkipDueToException(guardrailEntry, target, clusterID) {
+					continue
+				}
 				checkPassed, evidence := e.evaluateCheck(guardrailEntry, target, clusterID)
 				if !checkPassed {
 					finding := e.createFinding(guardrailEntry, target, clusterID, evidence)
@@ -236,6 +239,41 @@ func (e *Evaluator) checkUnusedImages(target interface{}, params map[string]inte
 	}
 
 	return true, make(map[string]interface{})
+}
+
+func shouldSkipDueToException(guardrail models.GuardrailEntry, target interface{}, clusterID string) bool {
+	for _, exception := range guardrail.Exceptions {
+		if exception.Type == "namespace" {
+			if guardrail.Target == "image" {
+				img, ok := target.(derived.ImageEnriched)
+				if !ok {
+					continue
+				}
+				for _, workload := range img.UsedBy {
+					if workload == exception.Value {
+						return true
+					}
+				}
+			} else if guardrail.Target == "workload" {
+				wl, ok := target.(derived.WorkloadEnriched)
+				if !ok {
+					continue
+				}
+				if wl.Namespace == exception.Value {
+					return true
+				}
+			} else if guardrail.Target == "namespace" {
+				ns, ok := target.(derived.NamespaceEnriched)
+				if !ok {
+					continue
+				}
+				if ns.Name == exception.Value {
+					return true
+				}
+			}
+		}
+	}
+	return false
 }
 
 func (e *Evaluator) createFinding(guardrailEntry models.GuardrailEntry, target interface{}, clusterID string, evidence map[string]interface{}) map[string]interface{} {
