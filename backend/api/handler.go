@@ -22,6 +22,7 @@ func SetupRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /debug/derived", corsMiddleware(DerivedHandler))
 	mux.HandleFunc("GET /debug/raw", corsMiddleware(RawHandler))
 	mux.HandleFunc("GET /image-risk-map", corsMiddleware(ImageRiskMapHandler))
+	mux.HandleFunc("GET /scans", corsMiddleware(ScansHandler))
 }
 
 func HealthCheck(w http.ResponseWriter, r *http.Request) {
@@ -348,6 +349,29 @@ func ImageRiskMapHandler(w http.ResponseWriter, r *http.Request) {
 	err = json.NewEncoder(w).Encode(riskMap)
 	if err != nil {
 		log.Printf("Error encoding risk map response: %v\n", err)
+		return
+	}
+}
+
+func ScansHandler(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+
+	clusterID := r.URL.Query().Get("cluster_id")
+	if clusterID == "" {
+		clusterID = "default"
+	}
+
+	scans, err := storage.FetchScanHistory(clusterID, 50)
+	if err != nil {
+		log.Printf("Error fetching scan history for cluster %s: %v\n", clusterID, err)
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	w.WriteHeader(http.StatusOK)
+	err = json.NewEncoder(w).Encode(scans)
+	if err != nil {
+		log.Printf("Error encoding scans response: %v\n", err)
 		return
 	}
 }

@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"time"
 
 	_ "github.com/lib/pq"
 )
@@ -369,4 +370,49 @@ func UpdateFindingStatus(findingID int, status string) error {
 	}
 
 	return nil
+}
+
+func FetchScanHistory(clusterID string, limit int) ([]map[string]interface{}, error) {
+	query := `
+		SELECT id, received_at, cluster_id, kind
+		FROM scan_results
+		WHERE cluster_id = $1
+		ORDER BY received_at DESC
+		LIMIT $2
+	`
+
+	rows, err := DB.Query(query, clusterID, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var scans []map[string]interface{}
+
+	for rows.Next() {
+		var id int
+		var receivedAt time.Time
+		var scanClusterID string
+		var kind string
+
+		err := rows.Scan(&id, &receivedAt, &scanClusterID, &kind)
+		if err != nil {
+			continue
+		}
+
+		scan := map[string]interface{}{
+			"id":          id,
+			"received_at": receivedAt.Format(time.RFC3339),
+			"cluster_id":  scanClusterID,
+			"kind":        kind,
+		}
+		scans = append(scans, scan)
+	}
+
+	rowsErr := rows.Err()
+	if rowsErr != nil {
+		return nil, rowsErr
+	}
+
+	return scans, nil
 }
