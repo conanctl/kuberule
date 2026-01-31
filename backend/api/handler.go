@@ -21,6 +21,7 @@ func SetupRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("POST /findings", corsMiddleware(UpdateFindingHandler))
 	mux.HandleFunc("GET /debug/derived", corsMiddleware(DerivedHandler))
 	mux.HandleFunc("GET /debug/raw", corsMiddleware(RawHandler))
+	mux.HandleFunc("GET /image-risk-map", corsMiddleware(ImageRiskMapHandler))
 }
 
 func HealthCheck(w http.ResponseWriter, r *http.Request) {
@@ -314,6 +315,39 @@ func EvaluateGuardrailsHandler(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusOK)
 	err = json.NewEncoder(w).Encode(evaluationResults)
 	if err != nil {
+		return
+	}
+}
+
+func ImageRiskMapHandler(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+
+	clusterID := r.URL.Query().Get("cluster_id")
+	if clusterID == "" {
+		clusterID = "default"
+	}
+
+	clusterData, err := derived.BuildDerived(clusterID)
+	if err != nil {
+		log.Printf("Error building derived data for cluster %s: %v\n", clusterID, err)
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	riskMap := make(map[string]interface{})
+
+	for _, node := range clusterData.Nodes {
+		nodeRisk := make(map[string]interface{})
+		nodeRisk["used_images"] = node.UsedImages
+		nodeRisk["unused_images"] = node.UnusedImages
+		nodeRisk["vulnerabilities"] = node.Vulnerabilities
+		riskMap[node.Name] = nodeRisk
+	}
+
+	w.WriteHeader(http.StatusOK)
+	err = json.NewEncoder(w).Encode(riskMap)
+	if err != nil {
+		log.Printf("Error encoding risk map response: %v\n", err)
 		return
 	}
 }
