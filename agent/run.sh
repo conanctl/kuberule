@@ -70,7 +70,7 @@ while true; do
     send_with_retry "$BACKEND_ENDPOINT/ingest" "$REQUEST_BODY"
   fi
 
-  echo "collecting workloads
+  echo "collecting workloads"
 
   DEPLOYMENTS=$(kubectl get deployments --all-namespaces -o json 2>/dev/null || echo '{"items":[]}')
   STATEFULSETS=$(kubectl get statefulsets --all-namespaces -o json 2>/dev/null || echo '{"items":[]}')
