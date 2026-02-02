@@ -1,19 +1,48 @@
-version: "3.8"
-
 services:
-  backend:
-    image: golang:1.22
-    working_dir: /app
-    volumes:
-      - ./backend:/app
+  db:
+    image: docker.io/library/postgres:16-alpine
     environment:
-      - PORT=18081
-      - DATABASE_URL=postgres://user:pass@localhost/kuberule?sslmode=disable
-    command: ["go", "run", "main.go"]
+      POSTGRES_USER: kuberule
+      POSTGRES_PASSWORD: kuberule
+      POSTGRES_DB: kuberule
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U kuberule"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  backend:
+    image: kuberule-backend:local
+    build: ./backend
+    environment:
+      PORT: "18081"
+      DATABASE_URL: postgres://kuberule:kuberule@db:5432/kuberule?sslmode=disable
+      GUARDRAILS_DIR: /app/guardrails/packs
     ports:
       - "18081:18081"
+    depends_on:
+      db:
+        condition: service_healthy
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:18081/health"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:18081/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  frontend:
+    image: kuberule-frontend:local
+    build: ./frontend
+    environment:
+      NEXT_PUBLIC_API_BASE: http://localhost:18081
+    ports:
+      - "3000:3000"
+    depends_on:
+      backend:
+        condition: service_healthy
+
+volumes:
+  pgdata:
