@@ -44,10 +44,21 @@ type NamespaceEnriched struct {
 }
 
 type PodEnriched struct {
-	Name         string   `json:"name"`
-	Namespace    string   `json:"namespace"`
-	NodeName     string   `json:"node_name"`
-	WorkloadName string   `json:"workload_name"`
-	WorkloadKind string   `json:"workload_kind"`
-	Images       []string `json:"images"`
+	Name            string                 `json:"name"`
+	Namespace       string                 `json:"namespace"`
+	NodeName        string                 `json:"node_name"`
+	WorkloadName    string                 `json:"workload_name"`
+	WorkloadKind    string                 `json:"workload_kind"`
+	Images          []string               `json:"images"`
+	SecurityContext map[string]interface{} `json:"security_context"`
+	Containers      []ContainerEnriched    `json:"containers"`
+}
+
+type ContainerEnriched struct {
+	Name            string                 `json:"name"`
+	Image           string                 `json:"image"`
+	Resources       map[string]interface{} `json:"resources"`
+	SecurityContext map[string]interface{} `json:"security_context"`
+	LivenessProbe   map[string]interface{} `json:"liveness_probe"`
+	ReadinessProbe  map[string]interface{} `json:"readiness_probe"`
 }

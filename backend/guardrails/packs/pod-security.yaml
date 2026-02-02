@@ -1,0 +1,80 @@
+{
+  "apiVersion": "kuberule.io/v1",
+  "kind": "GuardrailPack",
+  "metadata": {
+    "name": "pod-security-standards",
+    "version": "1.0.0"
+  },
+  "spec": {
+    "description": "Pod security and best practices guardrails",
+    "owner": "security-team",
+    "scope": {
+      "clusters": ["*"],
+      "namespaces": ["*"],
+      "workloadKinds": ["Deployment", "StatefulSet", "DaemonSet"]
+    },
+    "guardrails": [
+      {
+        "id": "GR-POD-001",
+        "title": "Pods must have resource limits",
+        "category": "resource-management",
+        "severity": "high",
+        "target": "pod",
+        "check": {
+          "type": "resource_limits",
+          "params": {
+            "requireLimits": true,
+            "requireRequests": true
+          }
+        },
+        "remediationHint": "Add resource limits and requests to all containers in the pod spec",
+        "rationale": "Resource limits prevent resource starvation and ensure fair resource allocation across pods",
+        "exceptions": []
+      },
+      {
+        "id": "GR-POD-002",
+        "title": "Pods must not run as privileged",
+        "category": "security",
+        "severity": "critical",
+        "target": "pod",
+        "check": {
+          "type": "pod_security_policy",
+          "params": {
+            "allowPrivileged": false,
+            "runAsNonRoot": true
+          }
+        },
+        "remediationHint": "Set securityContext with runAsNonRoot: true and privileged: false",
+        "rationale": "Running as root or privileged increases security risk and potential for privilege escalation",
+        "exceptions": [
+          {
+            "type": "namespace",
+            "value": "kube-system"
+          }
+        ]
+      },
+      {
+        "id": "GR-POD-003",
+        "title": "Pods must have health checks configured",
+        "category": "reliability",
+        "severity": "medium",
+        "target": "pod",
+        "check": {
+          "type": "health_checks",
+          "params": {
+            "requireLiveness": true,
+            "requireReadiness": true
+          }
+        },
+        "remediationHint": "Configure livenessProbe and readinessProbe for all containers",
+        "rationale": "Health checks enable automatic recovery and proper traffic routing",
+        "exceptions": [
+          {
+            "type": "namespace",
+            "value": "kube-system"
+          }
+        ]
+      }
+    ]
+  }
+}

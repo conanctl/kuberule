@@ -136,6 +136,12 @@ func (e *Evaluator) evaluateCheck(guardrailEntry models.GuardrailEntry, target i
 		return e.checkRequiredLabel(target, guardrailEntry.Check.Params)
 	case "unused_images_present":
 		return e.checkUnusedImages(target, guardrailEntry.Check.Params)
+	case "resource_limits":
+		return e.checkResourceLimits(target, guardrailEntry.Check.Params)
+	case "pod_security_policy":
+		return e.checkPodSecurityPolicy(target, guardrailEntry.Check.Params)
+	case "health_checks":
+		return e.checkHealthChecks(target, guardrailEntry.Check.Params)
 	default:
 		log.Printf("Warning: unknown check type %s\n", guardrailEntry.Check.Type)
 		return true, make(map[string]interface{})
@@ -316,4 +322,178 @@ func (e *Evaluator) createFinding(guardrailEntry models.GuardrailEntry, target i
 	}
 
 	return finding
+}
+
+func (e *Evaluator) checkResourceLimits(target interface{}, params map[string]interface{}) (bool, map[string]interface{}) {
+	podEnriched, ok := target.(derived.PodEnriched)
+	if !ok {
+		log.Printf("Warning: target is not PodEnriched type\n")
+		return true, make(map[string]interface{})
+	}
+
+	requireLimits := true
+	requireRequests := true
+
+	if reqLimitsInterface, hasReqLimits := params["requireLimits"]; hasReqLimits {
+		if reqLimitsBool, ok := reqLimitsInterface.(bool); ok {
+			requireLimits = reqLimitsBool
+		}
+	}
+
+	if reqRequestsInterface, hasReqRequests := params["requireRequests"]; hasReqRequests {
+		if reqRequestsBool, ok := reqRequestsInterface.(bool); ok {
+			requireRequests = reqRequestsBool
+		}
+	}
+
+	missingLimits := []string{}
+	missingRequests := []string{}
+
+	for _, container := range podEnriched.Containers {
+		if container.Resources == nil {
+			if requireLimits {
+				missingLimits = append(missingLimits, container.Name)
+			}
+			if requireRequests {
+				missingRequests = append(missingRequests, container.Name)
+			}
+			continue
+		}
+
+		if requireLimits {
+			limits, hasLimits := container.Resources["limits"].(map[string]interface{})
+			if !hasLimits || limits == nil || (limits["cpu"] == nil && limits["memory"] == nil) {
+				missingLimits = append(missingLimits, container.Name)
+			}
+		}
+
+		if requireRequests {
+			requests, hasRequests := container.Resources["requests"].(map[string]interface{})
+			if !hasRequests || requests == nil || (requests["cpu"] == nil && requests["memory"] == nil) {
+				missingRequests = append(missingRequests, container.Name)
+			}
+		}
+	}
+
+	if len(missingLimits) > 0 || len(missingRequests) > 0 {
+		evidence := map[string]interface{}{
+			"missing_limits":   missingLimits,
+			"missing_requests": missingRequests,
+		}
+		return false, evidence
+	}
+
+	return true, make(map[string]interface{})
+}
+
+func (e *Evaluator) checkPodSecurityPolicy(target interface{}, params map[string]interface{}) (bool, map[string]interface{}) {
+	podEnriched, ok := target.(derived.PodEnriched)
+	if !ok {
+		log.Printf("Warning: target is not PodEnriched type\n")
+		return true, make(map[string]interface{})
+	}
+
+	allowPrivileged := true
+	runAsNonRoot := false
+
+	if allowPrivInterface, hasAllowPriv := params["allowPrivileged"]; hasAllowPriv {
+		if allowPrivBool, ok := allowPrivInterface.(bool); ok {
+			allowPrivileged = allowPrivBool
+		}
+	}
+
+	if runAsNonRootInterface, hasRunAsNonRoot := params["runAsNonRoot"]; hasRunAsNonRoot {
+		if runAsNonRootBool, ok := runAsNonRootInterface.(bool); ok {
+			runAsNonRoot = runAsNonRootBool
+		}
+	}
+
+	violations := []string{}
+
+	if podEnriched.SecurityContext != nil {
+		if runAsNonRoot {
+			if runAsNonRootVal, hasRunAsNonRoot := podEnriched.SecurityContext["runAsNonRoot"].(bool); hasRunAsNonRoot {
+				if !runAsNonRootVal {
+					violations = append(violations, "Pod not running as non-root")
+				}
+			} else {
+				violations = append(violations, "Pod runAsNonRoot not set")
+			}
+		}
+	} else if runAsNonRoot {
+		violations = append(violations, "Pod security context not set")
+	}
+
+	for _, container := range podEnriched.Containers {
+		if container.SecurityContext != nil {
+			if !allowPrivileged {
+				if privileged, hasPrivileged := container.SecurityContext["privileged"].(bool); hasPrivileged && privileged {
+					violations = append(violations, "Container "+container.Name+" running as privileged")
+				}
+			}
+
+			if runAsNonRoot {
+				if runAsNonRootVal, hasRunAsNonRoot := container.SecurityContext["runAsNonRoot"].(bool); hasRunAsNonRoot {
+					if !runAsNonRootVal {
+						violations = append(violations, "Container "+container.Name+" not running as non-root")
+					}
+				}
+			}
+		}
+	}
+
+	if len(violations) > 0 {
+		evidence := map[string]interface{}{
+			"violations": violations,
+		}
+		return false, evidence
+	}
+
+	return true, make(map[string]interface{})
+}
+
+func (e *Evaluator) checkHealthChecks(target interface{}, params map[string]interface{}) (bool, map[string]interface{}) {
+	podEnriched, ok := target.(derived.PodEnriched)
+	if !ok {
+		log.Printf("Warning: target is not PodEnriched type\n")
+		return true, make(map[string]interface{})
+	}
+
+	requireLiveness := false
+	requireReadiness := false
+
+	if reqLivenessInterface, hasReqLiveness := params["requireLiveness"]; hasReqLiveness {
+		if reqLivenessBool, ok := reqLivenessInterface.(bool); ok {
+			requireLiveness = reqLivenessBool
+		}
+	}
+
+	if reqReadinessInterface, hasReqReadiness := params["requireReadiness"]; hasReqReadiness {
+		if reqReadinessBool, ok := reqReadinessInterface.(bool); ok {
+			requireReadiness = reqReadinessBool
+		}
+	}
+
+	missingLiveness := []string{}
+	missingReadiness := []string{}
+
+	for _, container := range podEnriched.Containers {
+		if requireLiveness && len(container.LivenessProbe) == 0 {
+			missingLiveness = append(missingLiveness, container.Name)
+		}
+
+		if requireReadiness && len(container.ReadinessProbe) == 0 {
+			missingReadiness = append(missingReadiness, container.Name)
+		}
+	}
+
+	if len(missingLiveness) > 0 || len(missingReadiness) > 0 {
+		evidence := map[string]interface{}{
+			"missing_liveness":  missingLiveness,
+			"missing_readiness": missingReadiness,
+		}
+		return false, evidence
+	}
+
+	return true, make(map[string]interface{})
 }
