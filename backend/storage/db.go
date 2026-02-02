@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"strings"
 	"time"
 
 	_ "github.com/lib/pq"
@@ -16,7 +17,7 @@ var DB *sql.DB
 func InitDB() {
 	databaseURL := os.Getenv("DATABASE_URL")
 	if databaseURL == "" {
-		databaseURL = "postgres://user:pass@localhost/kuberule?sslmode=disable"
+		databaseURL = "postgres://localhost/kuberule?sslmode=disable"
 	}
 
 	var err error
@@ -266,37 +267,38 @@ func UpsertFinding(finding map[string]interface{}) error {
 }
 
 func FetchFindings(filters map[string]string) ([]map[string]interface{}, error) {
-	query := "SELECT id, guardrail_id, title, category, severity, target_type, target_identifier, cluster_id, namespace, status, first_seen_at, last_seen_at, evidence, remediation_hint, owner_label_value FROM findings WHERE 1=1"
+	var query strings.Builder
+	query.WriteString("SELECT id, guardrail_id, title, category, severity, target_type, target_identifier, cluster_id, namespace, status, first_seen_at, last_seen_at, evidence, remediation_hint, owner_label_value FROM findings WHERE 1=1")
 
 	args := []interface{}{}
 	argIndex := 1
 
 	if status, exists := filters["status"]; exists && status != "" {
-		query += " AND status=$" + fmt.Sprintf("%d", argIndex)
+		fmt.Fprintf(&query, " AND status=$%d", argIndex)
 		args = append(args, status)
 		argIndex++
 	}
 
 	if severity, exists := filters["severity"]; exists && severity != "" {
-		query += " AND severity=$" + fmt.Sprintf("%d", argIndex)
+		fmt.Fprintf(&query, " AND severity=$%d", argIndex)
 		args = append(args, severity)
 		argIndex++
 	}
 
 	if clusterID, exists := filters["cluster_id"]; exists && clusterID != "" {
-		query += " AND cluster_id=$" + fmt.Sprintf("%d", argIndex)
+		fmt.Fprintf(&query, " AND cluster_id=$%d", argIndex)
 		args = append(args, clusterID)
 		argIndex++
 	}
 
 	if category, exists := filters["category"]; exists && category != "" {
-		query += " AND category=$" + fmt.Sprintf("%d", argIndex)
+		fmt.Fprintf(&query, " AND category=$%d", argIndex)
 		args = append(args, category)
 	}
 
-	query += " ORDER BY last_seen_at DESC"
+	query.WriteString(" ORDER BY last_seen_at DESC")
 
-	rows, err := DB.Query(query, args...)
+	rows, err := DB.Query(query.String(), args...)
 	if err != nil {
 		return nil, err
 	}

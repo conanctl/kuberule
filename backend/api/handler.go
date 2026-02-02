@@ -5,6 +5,7 @@ import (
 	"io"
 	"log"
 	"net/http"
+	"strconv"
 
 	"kuberule/backend/derived"
 	"kuberule/backend/guardrails"
@@ -245,7 +246,7 @@ func DerivedHandler(w http.ResponseWriter, r *http.Request) {
 
 	clusterDerived, err := derived.BuildDerived(clusterID)
 	if err != nil {
-		log.Printf("Error building derived data for cluster %s: %v\n", clusterID, err)
+		log.Printf("Error building derived data for cluster %s: %v\n", strconv.Quote(clusterID), err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
@@ -277,7 +278,7 @@ func RawHandler(w http.ResponseWriter, r *http.Request) {
 
 	snapshots, err := storage.FetchSnapshots(clusterID, kind)
 	if err != nil {
-		log.Printf("Error fetching snapshots for cluster %s kind %s: %v\n", clusterID, kind, err)
+		log.Printf("Error fetching snapshots for cluster %s kind %s: %v\n", strconv.Quote(clusterID), strconv.Quote(kind), err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
@@ -308,7 +309,7 @@ func EvaluateGuardrailsHandler(w http.ResponseWriter, r *http.Request) {
 	evaluator := guardrails.NewEvaluator(storage.DB)
 	evaluationResults, err := evaluator.Evaluate(clusterID)
 	if err != nil {
-		log.Printf("Error evaluating guardrails for cluster %s: %v\n", clusterID, err)
+		log.Printf("Error evaluating guardrails for cluster %s: %v\n", strconv.Quote(clusterID), err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
@@ -330,7 +331,7 @@ func ImageRiskMapHandler(w http.ResponseWriter, r *http.Request) {
 
 	clusterData, err := derived.BuildDerived(clusterID)
 	if err != nil {
-		log.Printf("Error building derived data for cluster %s: %v\n", clusterID, err)
+		log.Printf("Error building derived data for cluster %s: %v\n", strconv.Quote(clusterID), err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
@@ -363,7 +364,7 @@ func ScansHandler(w http.ResponseWriter, r *http.Request) {
 
 	scans, err := storage.FetchScanHistory(clusterID, 50)
 	if err != nil {
-		log.Printf("Error fetching scan history for cluster %s: %v\n", clusterID, err)
+		log.Printf("Error fetching scan history for cluster %s: %v\n", strconv.Quote(clusterID), err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}

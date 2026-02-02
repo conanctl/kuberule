@@ -5,6 +5,7 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"kuberule/backend/models"
 	"kuberule/backend/storage"
@@ -32,7 +33,11 @@ func LoadGuardrailsFromDisk() error {
 	allFiles := append(yamlFiles, jsonFiles...)
 
 	for _, filePath := range allFiles {
-		fileBytes, err := os.ReadFile(filePath) // #nosec G304
+		cleanPath := filepath.Clean(filePath)
+		if !strings.HasPrefix(cleanPath, packsDir) {
+			continue
+		}
+		fileBytes, err := os.ReadFile(cleanPath)
 		if err != nil {
 			return err
 		}
@@ -49,6 +54,8 @@ func LoadGuardrailsFromDisk() error {
 		}
 
 		packJSONString := string(packJSON)
+
+		_ = storage.DeleteGuardrailPack(guardrailPack.Metadata.Name)
 
 		err = storage.InsertGuardrailPack(guardrailPack.Metadata.Name, guardrailPack.Metadata.Version, packJSONString)
 		if err != nil {
