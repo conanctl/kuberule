@@ -1,0 +1,42 @@
+collectors:
+  - kind: trivy-scan
+    command: timeout 300 trivy k8s cluster --format json --skip-db-update
+
+  - kind: namespaces
+    command: kubectl get namespaces -o json
+
+  - kind: workloads
+    command: |
+      deployments=$(kubectl get deployments --all-namespaces -o json 2>/dev/null || echo '{"items":[]}')
+      statefulsets=$(kubectl get statefulsets --all-namespaces -o json 2>/dev/null || echo '{"items":[]}')
+      daemonsets=$(kubectl get daemonsets --all-namespaces -o json 2>/dev/null || echo '{"items":[]}')
+      replicasets=$(kubectl get replicasets --all-namespaces -o json 2>/dev/null || echo '{"items":[]}')
+      pods=$(kubectl get pods --all-namespaces -o json 2>/dev/null || echo '{"items":[]}')
+      jq -n \
+        --argjson deps "$deployments" \
+        --argjson sts "$statefulsets" \
+        --argjson ds "$daemonsets" \
+        --argjson rs "$replicasets" \
+        --argjson pods "$pods" \
+        '{deployments: $deps, statefulsets: $sts, daemonsets: $ds, replicasets: $rs, pods: $pods}'
+
+  - kind: nodes
+    command: kubectl get nodes -o json
+
+  - kind: image-scans
+    command: |
+      images=$(kubectl get pods --all-namespaces -o json | \
+        jq -r '.items[] | .spec.containers[]?, .spec.initContainers[]? | .image' | \
+        sort -u)
+      echo "["
+      first=true
+      for image in $images; do
+        scan=$(timeout 120 trivy image --quiet --format json "$image" 2>/dev/null || echo '{}')
+        if [ "$first" = true ]; then
+          first=false
+        else
+          echo ","
+        fi
+        echo "$scan"
+      done
+      echo "]"

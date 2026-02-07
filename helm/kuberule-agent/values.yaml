@@ -1,7 +1,7 @@
 image:
-  repository: kuberule-agent
+  repository: ghcr.io/conanctl/university-project-kuberule/agent
   tag: latest
-  pullPolicy: IfNotPresent
+  pullPolicy: Always
 
 backend:
   endpoint: http://backend:18081
@@ -11,11 +11,11 @@ cluster:
 
 resources:
   limits:
-    cpu: 200m
-    memory: 256Mi
+    cpu: 500m
+    memory: 1024Mi
   requests:
     cpu: 100m
-    memory: 128Mi
+    memory: 256Mi
 
 serviceAccount:
   create: true
