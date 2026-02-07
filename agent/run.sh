@@ -70,9 +70,7 @@ while true; do
     KIND=$(yq ".collectors[$INDEX].kind" "$COLLECTORS_FILE")
     COMMAND=$(yq ".collectors[$INDEX].command" "$COLLECTORS_FILE")
 
-    echo "[debug] collector=$KIND start=$(date +%s)"
     run_collector "$KIND" "$COMMAND"
-    echo "[debug] collector=$KIND end=$(date +%s)"
 
     INDEX=$((INDEX + 1))
   done
