@@ -1,7 +1,4 @@
 collectors:
-  - kind: trivy-scan
-    command: timeout 300 trivy k8s cluster --format json --skip-db-update
-
   - kind: namespaces
     command: kubectl get namespaces -o json
 
@@ -31,7 +28,7 @@ collectors:
       echo "["
       first=true
       for image in $images; do
-        scan=$(timeout 120 trivy image --quiet --format json "$image" 2>/dev/null || echo '{}')
+        scan=$(timeout 60 trivy image --quiet --skip-db-update --format json "$image" 2>/dev/null || echo '{}')
         if [ "$first" = true ]; then
           first=false
         else
