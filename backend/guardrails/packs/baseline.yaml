@@ -44,7 +44,7 @@
         "check": {
           "type": "required_label",
           "params": {
-            "key": "team"
+            "labelKey": "team"
           }
         },
         "remediationHint": "Add team label to namespace for ownership tracking",
