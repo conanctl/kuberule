@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"log"
+	"os"
 
 	"kuberule/backend/derived"
 	"kuberule/backend/models"
@@ -11,11 +12,20 @@ import (
 )
 
 type Evaluator struct {
-	DB *sql.DB
+	DB            *sql.DB
+	OwnerLabelKey string
 }
 
 func NewEvaluator(db *sql.DB) *Evaluator {
-	return &Evaluator{DB: db}
+	ownerLabelKey := os.Getenv("OWNER_LABEL_KEY")
+	if ownerLabelKey == "" {
+		ownerLabelKey = "team"
+	}
+
+	return &Evaluator{
+		DB:            db,
+		OwnerLabelKey: ownerLabelKey,
+	}
 }
 
 func (e *Evaluator) Evaluate(clusterID string) ([]map[string]interface{}, error) {
@@ -29,6 +39,11 @@ func (e *Evaluator) Evaluate(clusterID string) ([]map[string]interface{}, error)
 	if err != nil {
 		log.Printf("Error building derived data for cluster %s: %v\n", clusterID, err)
 		return nil, err
+	}
+
+	namespaceLabelMap := make(map[string]map[string]string)
+	for _, namespace := range clusterDerived.Namespaces {
+		namespaceLabelMap[namespace.Name] = namespace.Labels
 	}
 
 	results := make([]map[string]interface{}, 0)
@@ -75,7 +90,7 @@ func (e *Evaluator) Evaluate(clusterID string) ([]map[string]interface{}, error)
 				}
 				checkPassed, evidence := e.evaluateCheck(guardrailEntry, target, clusterID)
 				if !checkPassed {
-					finding := e.createFinding(guardrailEntry, target, clusterID, evidence)
+					finding := e.createFinding(guardrailEntry, target, clusterID, evidence, namespaceLabelMap)
 					upsertErr := storage.UpsertFinding(finding)
 					if upsertErr != nil {
 						log.Printf("Error upserting finding: %v\n", upsertErr)
@@ -282,7 +297,7 @@ func shouldSkipDueToException(guardrail models.GuardrailEntry, target interface{
 	return false
 }
 
-func (e *Evaluator) createFinding(guardrailEntry models.GuardrailEntry, target interface{}, clusterID string, evidence map[string]interface{}) map[string]interface{} {
+func (e *Evaluator) createFinding(guardrailEntry models.GuardrailEntry, target interface{}, clusterID string, evidence map[string]interface{}, namespaceLabelMap map[string]map[string]string) map[string]interface{} {
 	targetIdentifier := ""
 	targetType := guardrailEntry.Target
 	namespace := ""
@@ -306,6 +321,17 @@ func (e *Evaluator) createFinding(guardrailEntry models.GuardrailEntry, target i
 		targetIdentifier = "unknown"
 	}
 
+	ownerLabelValue := ""
+	if namespace != "" {
+		labels, hasNamespace := namespaceLabelMap[namespace]
+		if hasNamespace {
+			value, hasLabel := labels[e.OwnerLabelKey]
+			if hasLabel {
+				ownerLabelValue = value
+			}
+		}
+	}
+
 	finding := map[string]interface{}{
 		"guardrail_id":      guardrailEntry.ID,
 		"title":             guardrailEntry.Title,
@@ -318,7 +344,7 @@ func (e *Evaluator) createFinding(guardrailEntry models.GuardrailEntry, target i
 		"status":            "open",
 		"evidence":          evidence,
 		"remediation_hint":  guardrailEntry.RemediationHint,
-		"owner_label_value": "",
+		"owner_label_value": ownerLabelValue,
 	}
 
 	return finding
