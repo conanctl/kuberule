@@ -68,6 +68,11 @@ func (e *Evaluator) Evaluate(clusterID string) ([]map[string]interface{}, error)
 			continue
 		}
 
+		if !packAppliesToCluster(guardrailPack, clusterID) {
+			log.Printf("Skipping pack %s for cluster %s (scope mismatch)\n", guardrailPack.Metadata.Name, clusterID)
+			continue
+		}
+
 		for _, guardrailEntry := range guardrailPack.Spec.Guardrails {
 			targets := e.collectTargets(guardrailEntry, clusterDerived)
 
@@ -262,6 +267,24 @@ func (e *Evaluator) checkUnusedImages(target interface{}, params map[string]inte
 	return true, make(map[string]interface{})
 }
 
+func packAppliesToCluster(pack models.GuardrailPack, clusterID string) bool {
+	if len(pack.Spec.Scope.Clusters) == 0 {
+		return true
+	}
+
+	for _, allowedCluster := range pack.Spec.Scope.Clusters {
+		if allowedCluster == "*" {
+			return true
+		}
+
+		if allowedCluster == clusterID {
+			return true
+		}
+	}
+
+	return false
+}
+
 func shouldSkipDueToException(guardrail models.GuardrailEntry, target interface{}, clusterID string) bool {
 	for _, exception := range guardrail.Exceptions {
 		if exception.Type == "namespace" {
@@ -289,6 +312,26 @@ func shouldSkipDueToException(guardrail models.GuardrailEntry, target interface{
 					continue
 				}
 				if ns.Name == exception.Value {
+					return true
+				}
+			} else if guardrail.Target == "pod" {
+				pod, ok := target.(derived.PodEnriched)
+				if !ok {
+					continue
+				}
+				if pod.Namespace == exception.Value {
+					return true
+				}
+			}
+		}
+
+		if exception.Type == "name" {
+			if guardrail.Target == "node" {
+				node, ok := target.(derived.NodeEnriched)
+				if !ok {
+					continue
+				}
+				if node.Name == exception.Value {
 					return true
 				}
 			}
