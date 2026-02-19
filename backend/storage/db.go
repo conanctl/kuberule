@@ -418,3 +418,31 @@ func FetchScanHistory(clusterID string, limit int) ([]map[string]interface{}, er
 
 	return scans, nil
 }
+
+func FetchDistinctClusterIDs() ([]string, error) {
+	query := "SELECT DISTINCT cluster_id FROM scan_results ORDER BY cluster_id"
+
+	rows, err := DB.Query(query)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	clusterIDs := []string{}
+
+	for rows.Next() {
+		var clusterID string
+		err := rows.Scan(&clusterID)
+		if err != nil {
+			return nil, err
+		}
+		clusterIDs = append(clusterIDs, clusterID)
+	}
+
+	rowsErr := rows.Err()
+	if rowsErr != nil {
+		return nil, rowsErr
+	}
+
+	return clusterIDs, nil
+}

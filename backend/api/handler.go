@@ -20,10 +20,33 @@ func SetupRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /guardrails/evaluate", corsMiddleware(EvaluateGuardrailsHandler))
 	mux.HandleFunc("GET /findings", corsMiddleware(FindingsHandler))
 	mux.HandleFunc("POST /findings", corsMiddleware(UpdateFindingHandler))
+	mux.HandleFunc("GET /cluster/state", corsMiddleware(DerivedHandler))
+	mux.HandleFunc("GET /cluster/raw", corsMiddleware(RawHandler))
 	mux.HandleFunc("GET /debug/derived", corsMiddleware(DerivedHandler))
 	mux.HandleFunc("GET /debug/raw", corsMiddleware(RawHandler))
 	mux.HandleFunc("GET /image-risk-map", corsMiddleware(ImageRiskMapHandler))
 	mux.HandleFunc("GET /scans", corsMiddleware(ScansHandler))
+	mux.HandleFunc("GET /clusters", corsMiddleware(ClustersHandler))
+}
+
+func ClustersHandler(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+
+	clusters, err := storage.FetchDistinctClusterIDs()
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	response := map[string]interface{}{
+		"clusters": clusters,
+	}
+
+	err = json.NewEncoder(w).Encode(response)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
 }
 
 func HealthCheck(w http.ResponseWriter, r *http.Request) {
@@ -210,6 +233,24 @@ func UpdateFindingHandler(w http.ResponseWriter, r *http.Request) {
 
 	findingID := int(findingIDValue.(float64))
 	status := statusValue.(string)
+
+	allowedStatuses := map[string]bool{
+		"open":         true,
+		"acknowledged": true,
+		"resolved":     true,
+	}
+
+	if !allowedStatuses[status] {
+		w.WriteHeader(http.StatusBadRequest)
+		errorResponse := map[string]string{
+			"error": "invalid status, must be one of: open, acknowledged, resolved",
+		}
+		err := json.NewEncoder(w).Encode(errorResponse)
+		if err != nil {
+			return
+		}
+		return
+	}
 
 	updateErr := storage.UpdateFindingStatus(findingID, status)
 	if updateErr != nil {
