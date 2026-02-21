@@ -446,3 +446,320 @@ func FetchDistinctClusterIDs() ([]string, error) {
 
 	return clusterIDs, nil
 }
+
+func CountFindingsBySeverity(clusterID string, status string) (map[string]int, error) {
+	counts := map[string]int{
+		"critical": 0,
+		"high":     0,
+		"medium":   0,
+		"low":      0,
+	}
+
+	var query string
+	var args []interface{}
+
+	if clusterID != "" {
+		query = "SELECT severity, COUNT(*) FROM findings WHERE cluster_id = $1 AND status = $2 GROUP BY severity"
+		args = []interface{}{clusterID, status}
+	} else {
+		query = "SELECT severity, COUNT(*) FROM findings WHERE status = $1 GROUP BY severity"
+		args = []interface{}{status}
+	}
+
+	rows, err := DB.Query(query, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var severity string
+		var count int
+
+		err := rows.Scan(&severity, &count)
+		if err != nil {
+			return nil, err
+		}
+
+		counts[severity] = count
+	}
+
+	rowsErr := rows.Err()
+	if rowsErr != nil {
+		return nil, rowsErr
+	}
+
+	return counts, nil
+}
+
+func CountFindingsByCategory(clusterID string, status string) (map[string]int, error) {
+	counts := map[string]int{}
+
+	var query string
+	var args []interface{}
+
+	if clusterID != "" {
+		query = "SELECT category, COUNT(*) FROM findings WHERE cluster_id = $1 AND status = $2 GROUP BY category"
+		args = []interface{}{clusterID, status}
+	} else {
+		query = "SELECT category, COUNT(*) FROM findings WHERE status = $1 GROUP BY category"
+		args = []interface{}{status}
+	}
+
+	rows, err := DB.Query(query, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var category string
+		var count int
+
+		err := rows.Scan(&category, &count)
+		if err != nil {
+			return nil, err
+		}
+
+		counts[category] = count
+	}
+
+	rowsErr := rows.Err()
+	if rowsErr != nil {
+		return nil, rowsErr
+	}
+
+	return counts, nil
+}
+
+func CountFindingsByStatus(clusterID string) (map[string]int, error) {
+	counts := map[string]int{
+		"open":         0,
+		"acknowledged": 0,
+		"resolved":     0,
+	}
+
+	var query string
+	var args []interface{}
+
+	if clusterID != "" {
+		query = "SELECT status, COUNT(*) FROM findings WHERE cluster_id = $1 GROUP BY status"
+		args = []interface{}{clusterID}
+	} else {
+		query = "SELECT status, COUNT(*) FROM findings GROUP BY status"
+		args = []interface{}{}
+	}
+
+	rows, err := DB.Query(query, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var status string
+		var count int
+
+		err := rows.Scan(&status, &count)
+		if err != nil {
+			return nil, err
+		}
+
+		counts[status] = count
+	}
+
+	rowsErr := rows.Err()
+	if rowsErr != nil {
+		return nil, rowsErr
+	}
+
+	return counts, nil
+}
+
+func CountFindingsByOwner(clusterID string, status string) ([]map[string]interface{}, error) {
+	var query string
+	var args []interface{}
+
+	if clusterID != "" {
+		query = `
+			SELECT COALESCE(owner_label_value, '') AS owner, severity, COUNT(*)
+			FROM findings
+			WHERE cluster_id = $1 AND status = $2
+			GROUP BY owner, severity
+		`
+		args = []interface{}{clusterID, status}
+	} else {
+		query = `
+			SELECT COALESCE(owner_label_value, '') AS owner, severity, COUNT(*)
+			FROM findings
+			WHERE status = $1
+			GROUP BY owner, severity
+		`
+		args = []interface{}{status}
+	}
+
+	rows, err := DB.Query(query, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	ownerMap := map[string]map[string]int{}
+
+	for rows.Next() {
+		var owner string
+		var severity string
+		var count int
+
+		err := rows.Scan(&owner, &severity, &count)
+		if err != nil {
+			return nil, err
+		}
+
+		if _, exists := ownerMap[owner]; !exists {
+			ownerMap[owner] = map[string]int{
+				"critical": 0,
+				"high":     0,
+				"medium":   0,
+				"low":      0,
+				"total":    0,
+			}
+		}
+
+		ownerMap[owner][severity] = count
+		ownerMap[owner]["total"] += count
+	}
+
+	rowsErr := rows.Err()
+	if rowsErr != nil {
+		return nil, rowsErr
+	}
+
+	result := []map[string]interface{}{}
+	for owner, counts := range ownerMap {
+		result = append(result, map[string]interface{}{
+			"owner":    owner,
+			"critical": counts["critical"],
+			"high":     counts["high"],
+			"medium":   counts["medium"],
+			"low":      counts["low"],
+			"total":    counts["total"],
+		})
+	}
+
+	return result, nil
+}
+
+func ListClusterRiskSummaries() ([]map[string]interface{}, error) {
+	query := `
+		SELECT cluster_id, severity, COUNT(*)
+		FROM findings
+		WHERE status = 'open'
+		GROUP BY cluster_id, severity
+	`
+
+	rows, err := DB.Query(query)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	clusterMap := map[string]map[string]int{}
+
+	for rows.Next() {
+		var clusterID string
+		var severity string
+		var count int
+
+		err := rows.Scan(&clusterID, &severity, &count)
+		if err != nil {
+			return nil, err
+		}
+
+		if _, exists := clusterMap[clusterID]; !exists {
+			clusterMap[clusterID] = map[string]int{
+				"critical": 0,
+				"high":     0,
+				"medium":   0,
+				"low":      0,
+			}
+		}
+
+		clusterMap[clusterID][severity] = count
+	}
+
+	rowsErr := rows.Err()
+	if rowsErr != nil {
+		return nil, rowsErr
+	}
+
+	result := []map[string]interface{}{}
+	for clusterID, counts := range clusterMap {
+		critical := counts["critical"]
+		high := counts["high"]
+		medium := counts["medium"]
+		low := counts["low"]
+
+		riskScore := float64(critical)*4.0 + float64(high)*2.0 + float64(medium)*1.0 + float64(low)*0.5
+		openCount := critical + high + medium + low
+
+		healthScore := 100 - (critical*10 + high*5 + medium*1)
+		if healthScore < 0 {
+			healthScore = 0
+		}
+
+		result = append(result, map[string]interface{}{
+			"cluster_id":   clusterID,
+			"health_score": healthScore,
+			"open":         openCount,
+			"risk_score":   riskScore,
+		})
+	}
+
+	return result, nil
+}
+
+func CountActiveGuardrails() (int, error) {
+	packs, err := FetchGuardrailPacks()
+	if err != nil {
+		return 0, err
+	}
+
+	total := 0
+
+	for _, packData := range packs {
+		packValue, hasPack := packData["pack"]
+		if !hasPack {
+			continue
+		}
+
+		packMap, isMap := packValue.(map[string]interface{})
+		if !isMap {
+			continue
+		}
+
+		specValue, hasSpec := packMap["spec"]
+		if !hasSpec {
+			continue
+		}
+
+		specMap, isSpecMap := specValue.(map[string]interface{})
+		if !isSpecMap {
+			continue
+		}
+
+		guardrailsValue, hasGuardrails := specMap["guardrails"]
+		if !hasGuardrails {
+			continue
+		}
+
+		guardrailsList, isList := guardrailsValue.([]interface{})
+		if !isList {
+			continue
+		}
+
+		total += len(guardrailsList)
+	}
+
+	return total, nil
+}

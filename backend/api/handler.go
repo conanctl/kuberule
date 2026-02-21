@@ -27,6 +27,101 @@ func SetupRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /image-risk-map", corsMiddleware(ImageRiskMapHandler))
 	mux.HandleFunc("GET /scans", corsMiddleware(ScansHandler))
 	mux.HandleFunc("GET /clusters", corsMiddleware(ClustersHandler))
+	mux.HandleFunc("GET /metrics", corsMiddleware(MetricsHandler))
+}
+
+func computeHealthScore(critical int, high int, medium int) int {
+	score := 100 - (critical*10 + high*5 + medium*1)
+	if score < 0 {
+		return 0
+	}
+	return score
+}
+
+func computeCompliancePct(open int, acknowledged int, resolved int) float64 {
+	total := open + acknowledged + resolved
+	if total == 0 {
+		return 100.0
+	}
+	return float64(resolved) / float64(total) * 100.0
+}
+
+func MetricsHandler(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+
+	clusterID := r.URL.Query().Get("cluster_id")
+
+	bySeverity, err := storage.CountFindingsBySeverity(clusterID, "open")
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	byCategory, err := storage.CountFindingsByCategory(clusterID, "open")
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	byOwner, err := storage.CountFindingsByOwner(clusterID, "open")
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	byStatus, err := storage.CountFindingsByStatus(clusterID)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	activeGuardrails, err := storage.CountActiveGuardrails()
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	critical := bySeverity["critical"]
+	high := bySeverity["high"]
+	medium := bySeverity["medium"]
+
+	openCount := byStatus["open"]
+	acknowledgedCount := byStatus["acknowledged"]
+	resolvedCount := byStatus["resolved"]
+
+	healthScore := computeHealthScore(critical, high, medium)
+	compliancePct := computeCompliancePct(openCount, acknowledgedCount, resolvedCount)
+
+	totalFindings := openCount + acknowledgedCount + resolvedCount
+
+	response := map[string]interface{}{
+		"cluster_id":            clusterID,
+		"health_score":          healthScore,
+		"compliance_pct":        compliancePct,
+		"total_findings":        totalFindings,
+		"open_findings":         openCount,
+		"acknowledged_findings": acknowledgedCount,
+		"resolved_findings":     resolvedCount,
+		"active_guardrails":     activeGuardrails,
+		"by_severity":           bySeverity,
+		"by_category":           byCategory,
+		"by_owner":              byOwner,
+	}
+
+	if clusterID == "" {
+		perCluster, err := storage.ListClusterRiskSummaries()
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		response["per_cluster"] = perCluster
+	}
+
+	err = json.NewEncoder(w).Encode(response)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
 }
 
 func ClustersHandler(w http.ResponseWriter, r *http.Request) {
