@@ -255,7 +255,14 @@ func UpsertFinding(finding map[string]interface{}) error {
 		INSERT INTO findings (guardrail_id, title, category, severity, target_type, target_identifier, cluster_id, namespace, status, evidence, remediation_hint, owner_label_value)
 		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
 		ON CONFLICT (guardrail_id, target_identifier)
-		DO UPDATE SET last_seen_at=CURRENT_TIMESTAMP, evidence=$10
+		DO UPDATE SET
+			last_seen_at=CURRENT_TIMESTAMP,
+			evidence=$10,
+			severity=$4,
+			title=$2,
+			remediation_hint=$11,
+			namespace=$8,
+			owner_label_value=$12
 	`
 
 	_, err = DB.Exec(query, guardrailID, title, category, severity, targetType, targetIdentifier, clusterID, namespace, status, string(evidenceJSON), remediationHint, ownerLabelValue)
