@@ -46,6 +46,9 @@ func (e *Evaluator) Evaluate(clusterID string) ([]map[string]interface{}, error)
 		namespaceLabelMap[namespace.Name] = namespace.Labels
 	}
 
+	seenFindingKeys := []string{}
+	seenFindingKeySet := make(map[string]bool)
+
 	results := make([]map[string]interface{}, 0)
 
 	for _, packData := range guardrailPacksData {
@@ -96,6 +99,20 @@ func (e *Evaluator) Evaluate(clusterID string) ([]map[string]interface{}, error)
 				checkPassed, evidence := e.evaluateCheck(guardrailEntry, target, clusterID)
 				if !checkPassed {
 					finding := e.createFinding(guardrailEntry, target, clusterID, evidence, namespaceLabelMap)
+
+					targetIdentifier := finding["target_identifier"].(string)
+					findingKey := guardrailEntry.ID + "|" + targetIdentifier
+
+					if !seenFindingKeySet[findingKey] {
+						seenFindingKeys = append(seenFindingKeys, findingKey)
+						seenFindingKeySet[findingKey] = true
+					}
+
+					reopenErr := storage.ReopenResolvedFinding(guardrailEntry.ID, targetIdentifier)
+					if reopenErr != nil {
+						log.Printf("Error reopening resolved finding: %v\n", reopenErr)
+					}
+
 					upsertErr := storage.UpsertFinding(finding)
 					if upsertErr != nil {
 						log.Printf("Error upserting finding: %v\n", upsertErr)
@@ -105,6 +122,13 @@ func (e *Evaluator) Evaluate(clusterID string) ([]map[string]interface{}, error)
 
 			results = append(results, evaluationResult)
 		}
+	}
+
+	resolvedCount, autoResolveErr := storage.AutoResolveFindings(clusterID, seenFindingKeys)
+	if autoResolveErr != nil {
+		log.Printf("Error auto-resolving findings: %v\n", autoResolveErr)
+	} else if resolvedCount > 0 {
+		log.Printf("Auto-resolved %d findings no longer present on cluster %s\n", resolvedCount, clusterID)
 	}
 
 	return results, nil

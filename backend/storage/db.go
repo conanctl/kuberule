@@ -9,7 +9,7 @@ import (
 	"strings"
 	"time"
 
-	_ "github.com/lib/pq"
+	"github.com/lib/pq"
 )
 
 var DB *sql.DB
@@ -92,6 +92,16 @@ func createTables() {
 	`
 
 	_, err = DB.Exec(findingsQuery)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	alterFindingsQuery := `
+		ALTER TABLE findings
+		ADD COLUMN IF NOT EXISTS resolved_at TIMESTAMP NULL
+	`
+
+	_, err = DB.Exec(alterFindingsQuery)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -724,6 +734,45 @@ func ListClusterRiskSummaries() ([]map[string]interface{}, error) {
 	}
 
 	return result, nil
+}
+
+func AutoResolveFindings(clusterID string, seenKeys []string) (int, error) {
+	if clusterID == "" {
+		return 0, fmt.Errorf("cluster_id is required for auto-resolve")
+	}
+
+	query := `
+		UPDATE findings
+		SET status = 'resolved', resolved_at = CURRENT_TIMESTAMP
+		WHERE cluster_id = $1
+		  AND status IN ('open', 'acknowledged')
+		  AND NOT ((guardrail_id || '|' || target_identifier) = ANY($2::text[]))
+	`
+
+	result, err := DB.Exec(query, clusterID, pq.Array(seenKeys))
+	if err != nil {
+		return 0, err
+	}
+
+	rowsAffected, err := result.RowsAffected()
+	if err != nil {
+		return 0, err
+	}
+
+	return int(rowsAffected), nil
+}
+
+func ReopenResolvedFinding(guardrailID string, targetIdentifier string) error {
+	query := `
+		UPDATE findings
+		SET status = 'open', resolved_at = NULL
+		WHERE guardrail_id = $1
+		  AND target_identifier = $2
+		  AND status = 'resolved'
+	`
+
+	_, err := DB.Exec(query, guardrailID, targetIdentifier)
+	return err
 }
 
 func CountActiveGuardrails() (int, error) {
