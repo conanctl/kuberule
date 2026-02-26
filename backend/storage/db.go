@@ -285,7 +285,7 @@ func UpsertFinding(finding map[string]interface{}) error {
 
 func FetchFindings(filters map[string]string) ([]map[string]interface{}, error) {
 	var query strings.Builder
-	query.WriteString("SELECT id, guardrail_id, title, category, severity, target_type, target_identifier, cluster_id, namespace, status, first_seen_at, last_seen_at, evidence, remediation_hint, owner_label_value FROM findings WHERE 1=1")
+	query.WriteString("SELECT id, guardrail_id, title, category, severity, target_type, target_identifier, cluster_id, namespace, status, first_seen_at, last_seen_at, resolved_at, evidence, remediation_hint, owner_label_value FROM findings WHERE 1=1")
 
 	args := []interface{}{}
 	argIndex := 1
@@ -336,11 +336,12 @@ func FetchFindings(filters map[string]string) ([]map[string]interface{}, error) 
 		var status string
 		var firstSeenAt string
 		var lastSeenAt string
+		var resolvedAt sql.NullString
 		var evidenceBytes []byte
 		var remediationHint string
 		var ownerLabelValue string
 
-		err := rows.Scan(&id, &guardrailID, &title, &category, &severity, &targetType, &targetIdentifier, &clusterID, &namespace, &status, &firstSeenAt, &lastSeenAt, &evidenceBytes, &remediationHint, &ownerLabelValue)
+		err := rows.Scan(&id, &guardrailID, &title, &category, &severity, &targetType, &targetIdentifier, &clusterID, &namespace, &status, &firstSeenAt, &lastSeenAt, &resolvedAt, &evidenceBytes, &remediationHint, &ownerLabelValue)
 		if err != nil {
 			return nil, err
 		}
@@ -349,6 +350,13 @@ func FetchFindings(filters map[string]string) ([]map[string]interface{}, error) 
 		err = json.Unmarshal(evidenceBytes, &evidenceJSON)
 		if err != nil {
 			return nil, err
+		}
+
+		var resolvedAtValue interface{}
+		if resolvedAt.Valid {
+			resolvedAtValue = resolvedAt.String
+		} else {
+			resolvedAtValue = nil
 		}
 
 		result := map[string]interface{}{
@@ -364,6 +372,7 @@ func FetchFindings(filters map[string]string) ([]map[string]interface{}, error) 
 			"status":            status,
 			"first_seen_at":     firstSeenAt,
 			"last_seen_at":      lastSeenAt,
+			"resolved_at":       resolvedAtValue,
 			"evidence":          evidenceJSON,
 			"remediation_hint":  remediationHint,
 			"owner_label_value": ownerLabelValue,
