@@ -131,7 +131,48 @@ func (e *Evaluator) Evaluate(clusterID string) ([]map[string]interface{}, error)
 		log.Printf("Auto-resolved %d findings no longer present on cluster %s\n", resolvedCount, clusterID)
 	}
 
+	recordEvaluationSnapshot(clusterID)
+
 	return results, nil
+}
+
+func recordEvaluationSnapshot(clusterID string) {
+	bySeverity, err := storage.CountFindingsBySeverity(clusterID, "open")
+	if err != nil {
+		log.Printf("Error counting by severity for run snapshot: %v\n", err)
+		return
+	}
+
+	byStatus, err := storage.CountFindingsByStatus(clusterID)
+	if err != nil {
+		log.Printf("Error counting by status for run snapshot: %v\n", err)
+		return
+	}
+
+	critical := bySeverity["critical"]
+	high := bySeverity["high"]
+	medium := bySeverity["medium"]
+	low := bySeverity["low"]
+
+	openCount := byStatus["open"]
+	acknowledgedCount := byStatus["acknowledged"]
+	resolvedCount := byStatus["resolved"]
+	totalCount := openCount + acknowledgedCount + resolvedCount
+
+	healthScore := 100 - (critical*10 + high*5 + medium*1)
+	if healthScore < 0 {
+		healthScore = 0
+	}
+
+	compliancePct := 100.0
+	if totalCount > 0 {
+		compliancePct = float64(resolvedCount) / float64(totalCount) * 100.0
+	}
+
+	insertErr := storage.InsertEvaluationRun(clusterID, totalCount, openCount, resolvedCount, critical, high, medium, low, healthScore, compliancePct)
+	if insertErr != nil {
+		log.Printf("Error recording evaluation run: %v\n", insertErr)
+	}
 }
 
 func (e *Evaluator) collectTargets(guardrailEntry models.GuardrailEntry, clusterDerived *derived.ClusterDerived) []interface{} {

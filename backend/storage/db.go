@@ -106,6 +106,38 @@ func createTables() {
 		log.Fatal(err)
 	}
 
+	evaluationRunsQuery := `
+		CREATE TABLE IF NOT EXISTS evaluation_runs (
+			id SERIAL PRIMARY KEY,
+			cluster_id TEXT NOT NULL,
+			ran_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+			total_findings INT,
+			open_findings INT,
+			resolved_findings INT,
+			critical INT,
+			high INT,
+			medium INT,
+			low INT,
+			health_score INT,
+			compliance_pct DOUBLE PRECISION
+		)
+	`
+
+	_, err = DB.Exec(evaluationRunsQuery)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	evaluationRunsIndexQuery := `
+		CREATE INDEX IF NOT EXISTS evaluation_runs_cluster_ran_at
+		ON evaluation_runs (cluster_id, ran_at DESC)
+	`
+
+	_, err = DB.Exec(evaluationRunsIndexQuery)
+	if err != nil {
+		log.Fatal(err)
+	}
+
 	log.Println("Tables created")
 }
 
@@ -782,6 +814,80 @@ func ReopenResolvedFinding(guardrailID string, targetIdentifier string) error {
 
 	_, err := DB.Exec(query, guardrailID, targetIdentifier)
 	return err
+}
+
+func InsertEvaluationRun(clusterID string, totalFindings int, openFindings int, resolvedFindings int, critical int, high int, medium int, low int, healthScore int, compliancePct float64) error {
+	query := `
+		INSERT INTO evaluation_runs (cluster_id, total_findings, open_findings, resolved_findings, critical, high, medium, low, health_score, compliance_pct)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+	`
+
+	_, err := DB.Exec(query, clusterID, totalFindings, openFindings, resolvedFindings, critical, high, medium, low, healthScore, compliancePct)
+	return err
+}
+
+func FetchEvaluationHistory(clusterID string, limit int) ([]map[string]interface{}, error) {
+	if limit <= 0 {
+		limit = 50
+	}
+	if limit > 500 {
+		limit = 500
+	}
+
+	query := `
+		SELECT ran_at, total_findings, open_findings, resolved_findings, critical, high, medium, low, health_score, compliance_pct
+		FROM evaluation_runs
+		WHERE cluster_id = $1
+		ORDER BY ran_at DESC
+		LIMIT $2
+	`
+
+	rows, err := DB.Query(query, clusterID, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	history := []map[string]interface{}{}
+
+	for rows.Next() {
+		var ranAt time.Time
+		var totalFindings, openFindings, resolvedFindings int
+		var critical, high, medium, low int
+		var healthScore int
+		var compliancePct float64
+
+		err := rows.Scan(&ranAt, &totalFindings, &openFindings, &resolvedFindings, &critical, &high, &medium, &low, &healthScore, &compliancePct)
+		if err != nil {
+			return nil, err
+		}
+
+		entry := map[string]interface{}{
+			"ran_at":            ranAt.Format(time.RFC3339),
+			"total_findings":    totalFindings,
+			"open_findings":     openFindings,
+			"resolved_findings": resolvedFindings,
+			"critical":          critical,
+			"high":              high,
+			"medium":            medium,
+			"low":               low,
+			"health_score":      healthScore,
+			"compliance_pct":    compliancePct,
+		}
+
+		history = append(history, entry)
+	}
+
+	rowsErr := rows.Err()
+	if rowsErr != nil {
+		return nil, rowsErr
+	}
+
+	for i, j := 0, len(history)-1; i < j; i, j = i+1, j-1 {
+		history[i], history[j] = history[j], history[i]
+	}
+
+	return history, nil
 }
 
 func CountActiveGuardrails() (int, error) {

@@ -28,6 +28,43 @@ func SetupRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /scans", corsMiddleware(ScansHandler))
 	mux.HandleFunc("GET /clusters", corsMiddleware(ClustersHandler))
 	mux.HandleFunc("GET /metrics", corsMiddleware(MetricsHandler))
+	mux.HandleFunc("GET /metrics/history", corsMiddleware(MetricsHistoryHandler))
+}
+
+func MetricsHistoryHandler(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+
+	clusterID := r.URL.Query().Get("cluster_id")
+	if clusterID == "" {
+		http.Error(w, "cluster_id query parameter is required", http.StatusBadRequest)
+		return
+	}
+
+	limitStr := r.URL.Query().Get("limit")
+	limit := 50
+	if limitStr != "" {
+		parsedLimit, parseErr := strconv.Atoi(limitStr)
+		if parseErr == nil && parsedLimit > 0 {
+			limit = parsedLimit
+		}
+	}
+
+	history, err := storage.FetchEvaluationHistory(clusterID, limit)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	response := map[string]interface{}{
+		"cluster_id": clusterID,
+		"history":    history,
+	}
+
+	err = json.NewEncoder(w).Encode(response)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
 }
 
 func computeHealthScore(critical int, high int, medium int) int {
