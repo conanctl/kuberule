@@ -1,16 +1,18 @@
 "use client"
 
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
-import { getGuardrails } from "@/lib/api"
+import { getGuardrails, reloadGuardrails, evaluateGuardrails } from "@/lib/api"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { DataTable } from "@/components/shared/data-table"
 import { GuardrailPack, GuardrailEntry } from "@/lib/types"
 import { ColumnDef } from "@tanstack/react-table"
+import { useCluster } from "@/lib/cluster-context"
 
 export default function GuardrailsPage() {
   const queryClient = useQueryClient()
+  const { selectedCluster } = useCluster()
 
   const { data: packs, isLoading, error } = useQuery({
     queryKey: ["guardrails"],
@@ -18,25 +20,16 @@ export default function GuardrailsPage() {
   })
 
   const reloadMutation = useMutation({
-    mutationFn: async () => {
-      const apiBase = process.env.NEXT_PUBLIC_API_BASE || "http://localhost:18081"
-      const response = await fetch(`${apiBase}/guardrails/reload`, {
-        method: "POST",
-      })
-      if (!response.ok) throw new Error("Failed to reload")
-      return response.json()
-    },
+    mutationFn: reloadGuardrails,
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["guardrails"] })
     },
   })
 
   const evaluateMutation = useMutation({
-    mutationFn: async () => {
-      const apiBase = process.env.NEXT_PUBLIC_API_BASE || "http://localhost:18081"
-      const response = await fetch(`${apiBase}/guardrails/evaluate?cluster_id=default`)
-      if (!response.ok) throw new Error("Failed to evaluate")
-      return response.json()
+    mutationFn: () => evaluateGuardrails(selectedCluster),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["findings"] })
     },
   })
 
@@ -109,9 +102,9 @@ export default function GuardrailsPage() {
           </Button>
           <Button
             onClick={() => evaluateMutation.mutate()}
-            disabled={evaluateMutation.isPending}
+            disabled={evaluateMutation.isPending || selectedCluster === ""}
           >
-            {evaluateMutation.isPending ? "Evaluating..." : "Evaluate"}
+            {evaluateMutation.isPending ? "Evaluating..." : `Evaluate ${selectedCluster || ""}`}
           </Button>
         </div>
       </div>

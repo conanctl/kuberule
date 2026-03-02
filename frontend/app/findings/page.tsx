@@ -2,6 +2,7 @@
 
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
 import { getFindings, updateFindingStatus } from "@/lib/api"
+import { useCluster } from "@/lib/cluster-context"
 import { DataTable } from "@/components/shared/data-table"
 import { Badge } from "@/components/ui/badge"
 import { Finding } from "@/lib/types"
@@ -15,12 +16,19 @@ export default function FindingsPage() {
   const [severityFilter, setSeverityFilter] = useState<string>("all")
   const [statusFilter, setStatusFilter] = useState<string>("all")
   const [selectedFinding, setSelectedFinding] = useState<Finding | null>(null)
+  const { selectedCluster } = useCluster()
 
   const queryClient = useQueryClient()
 
   const { data: findings, isLoading, error } = useQuery({
-    queryKey: ["findings"],
-    queryFn: () => getFindings(),
+    queryKey: ["findings", selectedCluster],
+    queryFn: () => {
+      const filters: Record<string, string> = {}
+      if (selectedCluster !== "") {
+        filters.cluster_id = selectedCluster
+      }
+      return getFindings(filters)
+    },
   })
 
   const updateStatusMutation = useMutation({

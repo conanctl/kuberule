@@ -7,14 +7,15 @@ import { DataTable } from "@/components/shared/data-table"
 import { SeverityPills } from "@/components/shared/severity-pills"
 import { ImageEnriched, WorkloadEnriched, NamespaceEnriched, NodeEnriched } from "@/lib/types"
 import { ColumnDef } from "@tanstack/react-table"
-import { useState } from "react"
+import { useCluster } from "@/lib/cluster-context"
 
 export default function AssetsPage() {
-  const [clusterId, setClusterId] = useState("default")
+  const { selectedCluster } = useCluster()
 
   const { data: derived, isLoading, error } = useQuery({
-    queryKey: ["derived", clusterId],
-    queryFn: () => getDerived(clusterId),
+    queryKey: ["derived", selectedCluster],
+    queryFn: () => getDerived(selectedCluster),
+    enabled: selectedCluster !== "",
   })
 
   if (isLoading) {
@@ -162,18 +163,7 @@ export default function AssetsPage() {
     <div>
       <div className="mb-8">
         <h1 className="text-3xl font-bold text-black mb-4">Assets</h1>
-        <div className="flex items-center gap-4">
-          <label className="text-black font-medium">Cluster:</label>
-          <select
-            value={clusterId}
-            onChange={(e) => setClusterId(e.target.value)}
-            className="px-4 py-2 border rounded-md text-black"
-          >
-            <option value="default">default</option>
-            <option value="cluster-1">cluster-1</option>
-            <option value="cluster-2">cluster-2</option>
-          </select>
-        </div>
+        <p className="text-sm text-gray-600">Showing data for cluster: <span className="font-mono">{selectedCluster || "none"}</span></p>
       </div>
 
       <Tabs defaultValue="images">
