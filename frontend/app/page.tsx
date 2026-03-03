@@ -1,20 +1,39 @@
 "use client"
 
 import { useQuery } from "@tanstack/react-query"
-import { getFindings } from "@/lib/api"
+import { getFindings, getMetrics } from "@/lib/api"
 import { MetricCard } from "@/components/shared/metric-card"
 import { Finding } from "@/lib/types"
-import { PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer } from "recharts"
+import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Legend } from "recharts"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
+import { useCluster } from "@/lib/cluster-context"
 
 export default function Dashboard() {
-  const { data: findings, isLoading, error } = useQuery({
-    queryKey: ["findings"],
-    queryFn: () => getFindings(),
+  const { selectedCluster } = useCluster()
+
+  const metricsQuery = useQuery({
+    queryKey: ["metrics", selectedCluster],
+    queryFn: () => getMetrics(selectedCluster),
   })
 
-  if (isLoading) {
+  const aggregateMetricsQuery = useQuery({
+    queryKey: ["metrics", "aggregate"],
+    queryFn: () => getMetrics(""),
+  })
+
+  const findingsQuery = useQuery({
+    queryKey: ["findings", selectedCluster],
+    queryFn: () => {
+      const filters: Record<string, string> = {}
+      if (selectedCluster !== "") {
+        filters.cluster_id = selectedCluster
+      }
+      return getFindings(filters)
+    },
+  })
+
+  if (metricsQuery.isLoading || findingsQuery.isLoading || aggregateMetricsQuery.isLoading) {
     return (
       <div className="flex items-center justify-center h-64">
         <div className="text-lg text-black">Loading...</div>
@@ -22,7 +41,7 @@ export default function Dashboard() {
     )
   }
 
-  if (error) {
+  if (metricsQuery.error || findingsQuery.error || aggregateMetricsQuery.error) {
     return (
       <div className="flex items-center justify-center h-64">
         <div className="text-red-600">Error loading data</div>
@@ -30,48 +49,39 @@ export default function Dashboard() {
     )
   }
 
-  const findingsList = findings || []
+  const metrics = metricsQuery.data
+  const aggregateMetrics = aggregateMetricsQuery.data
+  const findingsList = findingsQuery.data || []
 
-  const criticalCount = findingsList.filter((f: Finding) => f.severity === "critical").length
-  const highCount = findingsList.filter((f: Finding) => f.severity === "high").length
-  const mediumCount = findingsList.filter((f: Finding) => f.severity === "medium").length
-  const lowCount = findingsList.filter((f: Finding) => f.severity === "low").length
+  const healthScore = metrics?.health_score ?? 0
+  const openFindings = metrics?.open_findings ?? 0
+  const criticalCount = metrics?.by_severity?.critical ?? 0
+  const totalVulns =
+    (metrics?.by_severity?.critical ?? 0) +
+    (metrics?.by_severity?.high ?? 0) +
+    (metrics?.by_severity?.medium ?? 0) +
+    (metrics?.by_severity?.low ?? 0)
 
-  const healthScore = Math.max(0, 100 - (criticalCount * 10 + highCount * 5 + mediumCount * 1))
-
-  const activeFindings = findingsList.filter((f: Finding) => f.status === "open").length
-
-  const totalVulns = criticalCount + highCount + mediumCount + lowCount
-
-  const categoryData = [
-    { name: "Security", value: findingsList.filter((f: Finding) => f.category === "Security").length },
-    { name: "Compliance", value: findingsList.filter((f: Finding) => f.category === "Compliance").length },
-    { name: "Hygiene", value: findingsList.filter((f: Finding) => f.category === "Hygiene").length },
-    { name: "Observability", value: findingsList.filter((f: Finding) => f.category === "Observability").length },
-  ]
-
-  const severityData = [
-    { name: "Critical", count: criticalCount },
-    { name: "High", count: highCount },
-    { name: "Medium", count: mediumCount },
-    { name: "Low", count: lowCount },
-  ]
-
-  const clusterMap: Record<string, number> = {}
-  findingsList.forEach((f: Finding) => {
-    const clusterId = f.cluster_id
-    if (!clusterMap[clusterId]) {
-      clusterMap[clusterId] = 0
+  const byCategoryMap: Record<string, number> = metrics?.by_category ?? {}
+  const categoryData = Object.keys(byCategoryMap).map((categoryName) => {
+    return {
+      name: categoryName,
+      total: byCategoryMap[categoryName],
     }
-    clusterMap[clusterId] += f.severity === "critical" ? 4 : f.severity === "high" ? 2 : f.severity === "medium" ? 1 : 0.5
   })
 
-  const topClusters = Object.entries(clusterMap)
-    .map(([cluster, risk]) => ({ cluster, risk }))
-    .sort((a, b) => b.risk - a.risk)
-    .slice(0, 5)
+  const severityData = [
+    { name: "Critical", count: metrics?.by_severity?.critical ?? 0 },
+    { name: "High", count: metrics?.by_severity?.high ?? 0 },
+    { name: "Medium", count: metrics?.by_severity?.medium ?? 0 },
+    { name: "Low", count: metrics?.by_severity?.low ?? 0 },
+  ]
 
-  const COLORS = ["#ef4444", "#f97316", "#eab308", "#3b82f6"]
+  const perCluster: { cluster_id: string; risk_score: number; open: number; health_score: number }[] =
+    aggregateMetrics?.per_cluster ?? []
+  const topClusters = [...perCluster]
+    .sort((a, b) => b.risk_score - a.risk_score)
+    .slice(0, 5)
 
   return (
     <div>
@@ -85,7 +95,7 @@ export default function Dashboard() {
         />
         <MetricCard
           title="Active Findings"
-          value={activeFindings}
+          value={openFindings}
           subtitle="Open issues"
         />
         <MetricCard
@@ -96,7 +106,7 @@ export default function Dashboard() {
         <MetricCard
           title="Total Vulnerabilities"
           value={totalVulns}
-          subtitle="Across all clusters"
+          subtitle={selectedCluster === "" ? "Across all clusters" : `In cluster ${selectedCluster}`}
         />
       </div>
 
@@ -107,23 +117,13 @@ export default function Dashboard() {
           </CardHeader>
           <CardContent>
             <ResponsiveContainer width="100%" height={300}>
-              <PieChart>
-                <Pie
-                  data={categoryData}
-                  cx="50%"
-                  cy="50%"
-                  labelLine={false}
-                  label={(entry) => entry.name}
-                  outerRadius={80}
-                  fill="#8884d8"
-                  dataKey="value"
-                >
-                  {categoryData.map((entry, index) => (
-                    <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
-                  ))}
-                </Pie>
+              <BarChart data={categoryData} layout="vertical">
+                <XAxis type="number" allowDecimals={false} />
+                <YAxis type="category" dataKey="name" width={140} />
                 <Tooltip />
-              </PieChart>
+                <Legend />
+                <Bar dataKey="total" fill="#3b82f6" name="Open findings" />
+              </BarChart>
             </ResponsiveContainer>
           </CardContent>
         </Card>
@@ -136,7 +136,7 @@ export default function Dashboard() {
             <ResponsiveContainer width="100%" height={300}>
               <BarChart data={severityData}>
                 <XAxis dataKey="name" />
-                <YAxis />
+                <YAxis allowDecimals={false} />
                 <Tooltip />
                 <Bar dataKey="count" fill="#3b82f6" />
               </BarChart>
@@ -151,10 +151,13 @@ export default function Dashboard() {
         </CardHeader>
         <CardContent>
           <div className="space-y-2">
+            {topClusters.length === 0 && (
+              <div className="text-sm text-gray-500">No clusters with open findings.</div>
+            )}
             {topClusters.map((cluster) => (
-              <div key={cluster.cluster} className="flex justify-between items-center p-3 bg-gray-50 rounded">
-                <span className="font-medium text-black">{cluster.cluster}</span>
-                <span className="text-red-600 font-bold">Risk: {cluster.risk.toFixed(1)}</span>
+              <div key={cluster.cluster_id} className="flex justify-between items-center p-3 bg-gray-50 rounded">
+                <span className="font-medium text-black">{cluster.cluster_id}</span>
+                <span className="text-red-600 font-bold">Risk: {cluster.risk_score.toFixed(1)}</span>
               </div>
             ))}
           </div>
