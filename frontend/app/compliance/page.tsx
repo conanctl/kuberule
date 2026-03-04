@@ -1,27 +1,27 @@
 "use client"
 
 import { useQuery } from "@tanstack/react-query"
-import { getFindings, getGuardrails } from "@/lib/api"
+import { getMetrics, getMetricsHistory } from "@/lib/api"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { MetricCard } from "@/components/shared/metric-card"
-import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer } from "recharts"
-import { Finding, GuardrailPack } from "@/lib/types"
+import { BarChart, Bar, LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, Legend } from "recharts"
+import { useCluster } from "@/lib/cluster-context"
 
 export default function CompliancePage() {
-  const { data: findings, isLoading: findingsLoading, error: findingsError } = useQuery({
-    queryKey: ["findings"],
-    queryFn: () => getFindings(),
+  const { selectedCluster } = useCluster()
+
+  const metricsQuery = useQuery({
+    queryKey: ["metrics", selectedCluster],
+    queryFn: () => getMetrics(selectedCluster),
   })
 
-  const { data: packs, isLoading: packsLoading, error: packsError } = useQuery({
-    queryKey: ["guardrails"],
-    queryFn: () => getGuardrails(),
+  const historyQuery = useQuery({
+    queryKey: ["metrics-history", selectedCluster],
+    queryFn: () => getMetricsHistory(selectedCluster, 50),
+    enabled: selectedCluster !== "",
   })
 
-  const isLoading = findingsLoading || packsLoading
-  const error = findingsError || packsError
-
-  if (isLoading) {
+  if (metricsQuery.isLoading) {
     return (
       <div className="flex items-center justify-center h-64">
         <div className="text-lg text-black">Loading...</div>
@@ -29,7 +29,7 @@ export default function CompliancePage() {
     )
   }
 
-  if (error) {
+  if (metricsQuery.error) {
     return (
       <div className="flex items-center justify-center h-64">
         <div className="text-red-600">Error loading data</div>
@@ -37,51 +37,66 @@ export default function CompliancePage() {
     )
   }
 
-  const findingsList = findings || []
-  const packsList = packs || []
+  const metrics = metricsQuery.data
 
-  const totalGuardrails = packsList.reduce((sum: number, pack: GuardrailPack) => {
-    return sum + pack.pack.spec.guardrails.length
-  }, 0)
+  const compliancePct = metrics?.compliance_pct ?? 0
+  const activeGuardrails = metrics?.active_guardrails ?? 0
+  const openFindings = metrics?.open_findings ?? 0
 
-  const resolvedFindings = findingsList.filter((f: Finding) => f.status === "resolved").length
-  const totalFindings = findingsList.length
-
-  const complianceScore = totalFindings > 0 ? Math.round((resolvedFindings / totalFindings) * 100) : 100
-
-  const categories = ["Security", "Resource Management", "Image Security", "Network Security"]
-  const categoryCompliance = categories.map((cat) => {
-    const catFindings = findingsList.filter((f: Finding) => f.category === cat)
-    const catResolved = catFindings.filter((f: Finding) => f.status === "resolved").length
-    const percentage = catFindings.length > 0 ? Math.round((catResolved / catFindings.length) * 100) : 100
-    return { category: cat, resolved: percentage }
+  const byCategory: Record<string, number> = metrics?.by_category ?? {}
+  const categoryData = Object.keys(byCategory).map((categoryName) => {
+    return {
+      category: categoryName,
+      open: byCategory[categoryName],
+    }
   })
 
   const severityData = [
-    { name: "Critical", count: findingsList.filter((f: Finding) => f.severity === "critical" && f.status === "open").length },
-    { name: "High", count: findingsList.filter((f: Finding) => f.severity === "high" && f.status === "open").length },
-    { name: "Medium", count: findingsList.filter((f: Finding) => f.severity === "medium" && f.status === "open").length },
-    { name: "Low", count: findingsList.filter((f: Finding) => f.severity === "low" && f.status === "open").length },
+    { name: "Critical", count: metrics?.by_severity?.critical ?? 0 },
+    { name: "High", count: metrics?.by_severity?.high ?? 0 },
+    { name: "Medium", count: metrics?.by_severity?.medium ?? 0 },
+    { name: "Low", count: metrics?.by_severity?.low ?? 0 },
   ]
 
-  const teamMap: Record<string, { critical: number; high: number; medium: number; low: number }> = {}
+  type OwnerEntry = {
+    owner: string
+    critical: number
+    high: number
+    medium: number
+    low: number
+    total: number
+  }
 
-  findingsList.forEach((f: Finding) => {
-    const team = f.owner_label_value || "unassigned"
-    if (!teamMap[team]) {
-      teamMap[team] = { critical: 0, high: 0, medium: 0, low: 0 }
+  const byOwner: OwnerEntry[] = metrics?.by_owner ?? []
+
+  const teamLeaderboard = [...byOwner]
+    .map((entry) => ({
+      team: entry.owner === "" ? "unassigned" : entry.owner,
+      critical: entry.critical,
+      high: entry.high,
+      medium: entry.medium,
+      low: entry.low,
+      total: entry.total,
+    }))
+    .sort((a, b) => b.total - a.total)
+
+  type HistoryEntry = {
+    ran_at: string
+    health_score: number
+    compliance_pct: number
+    open_findings: number
+    resolved_findings: number
+  }
+
+  const historyEntries: HistoryEntry[] = historyQuery.data?.history ?? []
+  const trendData = historyEntries.map((entry) => {
+    const timestamp = new Date(entry.ran_at)
+    return {
+      label: timestamp.toLocaleString(),
+      health_score: entry.health_score,
+      compliance_pct: Math.round(entry.compliance_pct * 10) / 10,
     }
-    if (f.severity === "critical") teamMap[team].critical++
-    else if (f.severity === "high") teamMap[team].high++
-    else if (f.severity === "medium") teamMap[team].medium++
-    else if (f.severity === "low") teamMap[team].low++
   })
-
-  const teamLeaderboard = Object.entries(teamMap).map(([team, counts]) => ({
-    team,
-    ...counts,
-    total: counts.critical + counts.high + counts.medium + counts.low,
-  })).sort((a, b) => b.total - a.total)
 
   return (
     <div>
@@ -90,17 +105,17 @@ export default function CompliancePage() {
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
         <MetricCard
           title="Compliance Score"
-          value={`${complianceScore}%`}
-          subtitle="Resolved findings"
+          value={`${compliancePct.toFixed(1)}%`}
+          subtitle="Resolved / total findings"
         />
         <MetricCard
-          title="Total Guardrails"
-          value={totalGuardrails}
-          subtitle="Active policies"
+          title="Active Guardrails"
+          value={activeGuardrails}
+          subtitle="Loaded policies"
         />
         <MetricCard
           title="Open Findings"
-          value={findingsList.filter((f: Finding) => f.status === "open").length}
+          value={openFindings}
           subtitle="Requiring attention"
         />
       </div>
@@ -108,15 +123,15 @@ export default function CompliancePage() {
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
         <Card>
           <CardHeader>
-            <CardTitle>Category Compliance</CardTitle>
+            <CardTitle>Open Findings by Category</CardTitle>
           </CardHeader>
           <CardContent>
             <ResponsiveContainer width="100%" height={300}>
-              <BarChart data={categoryCompliance}>
+              <BarChart data={categoryData}>
                 <XAxis dataKey="category" />
-                <YAxis />
+                <YAxis allowDecimals={false} />
                 <Tooltip />
-                <Bar dataKey="resolved" fill="#10b981" />
+                <Bar dataKey="open" fill="#3b82f6" />
               </BarChart>
             </ResponsiveContainer>
           </CardContent>
@@ -130,7 +145,7 @@ export default function CompliancePage() {
             <ResponsiveContainer width="100%" height={300}>
               <BarChart data={severityData}>
                 <XAxis dataKey="name" />
-                <YAxis />
+                <YAxis allowDecimals={false} />
                 <Tooltip />
                 <Bar dataKey="count" fill="#ef4444" />
               </BarChart>
@@ -138,6 +153,31 @@ export default function CompliancePage() {
           </CardContent>
         </Card>
       </div>
+
+      <Card className="mb-8">
+        <CardHeader>
+          <CardTitle>Compliance Trend (last 50 evaluations)</CardTitle>
+        </CardHeader>
+        <CardContent>
+          {trendData.length < 2 ? (
+            <div className="text-sm text-gray-500 py-8 text-center">
+              Not enough evaluations yet — run Evaluate at least twice to see a trend.
+            </div>
+          ) : (
+            <ResponsiveContainer width="100%" height={300}>
+              <LineChart data={trendData}>
+                <XAxis dataKey="label" tick={{ fontSize: 10 }} />
+                <YAxis yAxisId="left" domain={[0, 100]} />
+                <YAxis yAxisId="right" orientation="right" domain={[0, 100]} />
+                <Tooltip />
+                <Legend />
+                <Line yAxisId="left" type="monotone" dataKey="health_score" stroke="#3b82f6" name="Health Score" dot={false} />
+                <Line yAxisId="right" type="monotone" dataKey="compliance_pct" stroke="#10b981" name="Compliance %" dot={false} />
+              </LineChart>
+            </ResponsiveContainer>
+          )}
+        </CardContent>
+      </Card>
 
       <Card>
         <CardHeader>
@@ -156,6 +196,13 @@ export default function CompliancePage() {
               </tr>
             </thead>
             <tbody>
+              {teamLeaderboard.length === 0 && (
+                <tr>
+                  <td colSpan={6} className="py-4 text-center text-gray-500">
+                    No open findings yet.
+                  </td>
+                </tr>
+              )}
               {teamLeaderboard.map((team) => (
                 <tr key={team.team} className="border-b">
                   <td className="py-2 text-black">{team.team}</td>
