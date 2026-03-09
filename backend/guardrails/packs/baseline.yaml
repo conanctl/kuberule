@@ -1,72 +1,58 @@
-{
-  "apiVersion": "kuberule.io/v1",
-  "kind": "GuardrailPack",
-  "metadata": {
-    "name": "baseline-standards",
-    "version": "1.0.0"
-  },
-  "spec": {
-    "description": "Baseline security guardrails for container images",
-    "owner": "platform-team",
-    "scope": {
-      "clusters": ["*"],
-      "namespaces": ["*"],
-      "workloadKinds": ["Deployment", "StatefulSet", "DaemonSet"]
-    },
-    "guardrails": [
-      {
-        "id": "GR-IMG-001",
-        "title": "No images with critical vulnerabilities",
-        "category": "security",
-        "severity": "critical",
-        "target": "image",
-        "check": {
-          "type": "vuln_threshold",
-          "params": {
-            "maxCritical": 0
-          }
-        },
-        "remediationHint": "Update image to patched version or block deployment until CVEs are fixed",
-        "rationale": "Critical vulnerabilities pose immediate security risk",
-        "exceptions": [
-          {
-            "type": "namespace",
-            "value": "kube-system"
-          }
-        ]
-      },
-      {
-        "id": "GR-NS-001",
-        "title": "Namespaces must have team label",
-        "category": "compliance",
-        "severity": "medium",
-        "target": "namespace",
-        "check": {
-          "type": "required_label",
-          "params": {
-            "labelKey": "team"
-          }
-        },
-        "remediationHint": "Add team label to namespace for ownership tracking",
-        "rationale": "Team labels enable ownership and cost allocation",
-        "exceptions": []
-      },
-      {
-        "id": "GR-ND-001",
-        "title": "Nodes should have no unused images",
-        "category": "hygiene",
-        "severity": "low",
-        "target": "node",
-        "check": {
-          "type": "unused_images_present",
-          "params": {
-            "maxUnused": 0
-          }
-        },
-        "remediationHint": "Prune unused images to reclaim disk space",
-        "rationale": "Unused images consume storage and may contain unpatched vulnerabilities",
-        "exceptions": []
-      }
-    ]
-  }
-}
+apiVersion: kuberule.io/v1
+kind: GuardrailPack
+metadata:
+  name: baseline-standards
+  version: 1.0.0
+spec:
+  description: Baseline security guardrails for container images
+  owner: platform-team
+  scope:
+    clusters:
+      - "*"
+    namespaces:
+      - "*"
+    workloadKinds:
+      - Deployment
+      - StatefulSet
+      - DaemonSet
+  guardrails:
+    - id: GR-IMG-001
+      title: No images with critical vulnerabilities
+      category: security
+      severity: critical
+      target: image
+      check:
+        type: vuln_threshold
+        params:
+          maxCritical: 0
+      remediationHint: Update image to patched version or block deployment until CVEs are fixed
+      rationale: Critical vulnerabilities pose immediate security risk
+      exceptions:
+        - type: namespace
+          value: kube-system
+
+    - id: GR-NS-001
+      title: Namespaces must have team label
+      category: compliance
+      severity: medium
+      target: namespace
+      check:
+        type: required_label
+        params:
+          labelKey: team
+      remediationHint: Add team label to namespace for ownership tracking
+      rationale: Team labels enable ownership and cost allocation
+      exceptions: []
+
+    - id: GR-ND-001
+      title: Nodes should have no unused images
+      category: hygiene
+      severity: low
+      target: node
+      check:
+        type: unused_images_present
+        params:
+          maxUnused: 0
+      remediationHint: Prune unused images to reclaim disk space
+      rationale: Unused images consume storage and may contain unpatched vulnerabilities
+      exceptions: []

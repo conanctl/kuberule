@@ -81,7 +81,33 @@ Guardrail packs define the policies that KubeRule evaluates. Two packs ship out 
 - **baseline-standards** — Image vulnerability thresholds, required namespace labels, unused image detection
 - **pod-security-standards** — Resource limits, privilege restrictions, health check enforcement
 
-Add your own by creating a new pack file in `backend/guardrails/packs/` and clicking **Reload Packs** in the dashboard.
+Add your own by dropping a `.yaml` (or `.json`) file into `backend/guardrails/packs/` and clicking **Reload Packs** in the dashboard. A minimal pack looks like:
+
+```yaml
+apiVersion: kuberule.io/v1
+kind: GuardrailPack
+metadata:
+  name: my-pack
+  version: 0.1.0
+spec:
+  description: My custom guardrails
+  owner: my-team
+  scope:
+    clusters: ["*"]
+  guardrails:
+    - id: MY-001
+      title: Namespaces must have owner label
+      category: compliance
+      severity: medium
+      target: namespace
+      check:
+        type: required_label
+        params:
+          labelKey: owner
+      remediationHint: Add an `owner` label to the namespace
+      rationale: Ownership is required for paging
+      exceptions: []
+```
 
 ## Development Setup (without Docker)
 
