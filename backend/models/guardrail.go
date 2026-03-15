@@ -53,3 +53,10 @@ type SeverityCounts struct {
 	Medium   int `json:"medium"`
 	Low      int `json:"low"`
 }
+
+func (s *SeverityCounts) Add(other SeverityCounts) {
+	s.Critical += other.Critical
+	s.High += other.High
+	s.Medium += other.Medium
+	s.Low += other.Low
+}

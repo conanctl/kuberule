@@ -40,12 +40,10 @@ func MetricsHistoryHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	limitStr := r.URL.Query().Get("limit")
 	limit := 50
-	if limitStr != "" {
-		parsedLimit, parseErr := strconv.Atoi(limitStr)
-		if parseErr == nil && parsedLimit > 0 {
-			limit = parsedLimit
+	if s := r.URL.Query().Get("limit"); s != "" {
+		if n, err := strconv.Atoi(s); err == nil && n > 0 {
+			limit = n
 		}
 	}
 
@@ -252,11 +250,8 @@ func IngestHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	payload := string(bodyBytes)
-
-	storageErr := storage.InsertSnapshot(clusterID, kind, payload)
-	if storageErr != nil {
-		http.Error(w, storageErr.Error(), http.StatusInternalServerError)
+	if err := storage.InsertSnapshot(clusterID, kind, string(bodyBytes)); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 
@@ -384,9 +379,8 @@ func UpdateFindingHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	updateErr := storage.UpdateFindingStatus(findingID, status)
-	if updateErr != nil {
-		http.Error(w, updateErr.Error(), http.StatusInternalServerError)
+	if err := storage.UpdateFindingStatus(findingID, status); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 
@@ -419,7 +413,7 @@ func DerivedHandler(w http.ResponseWriter, r *http.Request) {
 
 	clusterDerived, err := derived.BuildDerived(clusterID)
 	if err != nil {
-		log.Printf("Error building derived data for cluster %s: %v\n", strconv.Quote(clusterID), err)
+		log.Printf("Error building derived data for cluster %s: %v", strconv.Quote(clusterID), err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
@@ -451,7 +445,7 @@ func RawHandler(w http.ResponseWriter, r *http.Request) {
 
 	snapshots, err := storage.FetchSnapshots(clusterID, kind)
 	if err != nil {
-		log.Printf("Error fetching snapshots for cluster %s kind %s: %v\n", strconv.Quote(clusterID), strconv.Quote(kind), err)
+		log.Printf("Error fetching snapshots for cluster %s kind %s: %v", strconv.Quote(clusterID), strconv.Quote(kind), err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
@@ -482,7 +476,7 @@ func EvaluateGuardrailsHandler(w http.ResponseWriter, r *http.Request) {
 	evaluator := guardrails.NewEvaluator(storage.DB)
 	evaluationResults, err := evaluator.Evaluate(clusterID)
 	if err != nil {
-		log.Printf("Error evaluating guardrails for cluster %s: %v\n", strconv.Quote(clusterID), err)
+		log.Printf("Error evaluating guardrails for cluster %s: %v", strconv.Quote(clusterID), err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
@@ -504,7 +498,7 @@ func ImageRiskMapHandler(w http.ResponseWriter, r *http.Request) {
 
 	clusterData, err := derived.BuildDerived(clusterID)
 	if err != nil {
-		log.Printf("Error building derived data for cluster %s: %v\n", strconv.Quote(clusterID), err)
+		log.Printf("Error building derived data for cluster %s: %v", strconv.Quote(clusterID), err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
@@ -522,7 +516,7 @@ func ImageRiskMapHandler(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusOK)
 	err = json.NewEncoder(w).Encode(riskMap)
 	if err != nil {
-		log.Printf("Error encoding risk map response: %v\n", err)
+		log.Printf("Error encoding risk map response: %v", err)
 		return
 	}
 }
@@ -537,7 +531,7 @@ func ScansHandler(w http.ResponseWriter, r *http.Request) {
 
 	scans, err := storage.FetchScanHistory(clusterID, 50)
 	if err != nil {
-		log.Printf("Error fetching scan history for cluster %s: %v\n", strconv.Quote(clusterID), err)
+		log.Printf("Error fetching scan history for cluster %s: %v", strconv.Quote(clusterID), err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
@@ -545,7 +539,7 @@ func ScansHandler(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusOK)
 	err = json.NewEncoder(w).Encode(scans)
 	if err != nil {
-		log.Printf("Error encoding scans response: %v\n", err)
+		log.Printf("Error encoding scans response: %v", err)
 		return
 	}
 }

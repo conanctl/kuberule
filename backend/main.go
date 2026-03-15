@@ -17,7 +17,7 @@ func main() {
 
 	err := guardrails.LoadGuardrailsFromDisk()
 	if err != nil {
-		log.Printf("Warning: Could not load guardrails from disk: %v\n", err)
+		log.Printf("Warning: Could not load guardrails from disk: %v", err)
 	}
 
 	port := os.Getenv("PORT")

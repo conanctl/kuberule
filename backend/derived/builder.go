@@ -20,125 +20,103 @@ func BuildDerived(clusterID string) (*ClusterDerived, error) {
 
 	imageScansSnapshots, err := storage.FetchSnapshots(clusterID, "image-scans")
 	if err != nil {
-		log.Printf("Error fetching image-scans for cluster %s: %v\n", clusterID, err)
+		log.Printf("Error fetching image-scans for cluster %s: %v", clusterID, err)
 	} else if len(imageScansSnapshots) > 0 {
 		latestSnapshot := imageScansSnapshots[0]
 		payloadString := extractPayloadString(latestSnapshot)
 		if payloadString != "" {
 			images := parseImages(payloadString)
 			clusterDerived.Images = images
-			log.Printf("Parsed %d images from image-scans snapshot\n", len(images))
+			log.Printf("Parsed %d images from image-scans snapshot", len(images))
 		}
 	}
 
 	workloadsSnapshots, err := storage.FetchSnapshots(clusterID, "workloads")
 	if err != nil {
-		log.Printf("Error fetching workloads for cluster %s: %v\n", clusterID, err)
+		log.Printf("Error fetching workloads for cluster %s: %v", clusterID, err)
 	} else if len(workloadsSnapshots) > 0 {
 		latestSnapshot := workloadsSnapshots[0]
 		payloadString := extractPayloadString(latestSnapshot)
 		if payloadString != "" {
 			pods := parsePods(payloadString)
 			clusterDerived.Pods = pods
-			log.Printf("Parsed %d pods from workloads snapshot\n", len(pods))
+			log.Printf("Parsed %d pods from workloads snapshot", len(pods))
 
 			workloads := parseWorkloads(payloadString, clusterDerived.Pods, clusterDerived.Images)
 			clusterDerived.Workloads = workloads
-			log.Printf("Parsed %d workloads from workloads snapshot\n", len(workloads))
+			log.Printf("Parsed %d workloads from workloads snapshot", len(workloads))
 		}
 	}
 
 	nodesSnapshots, err := storage.FetchSnapshots(clusterID, "nodes")
 	if err != nil {
-		log.Printf("Error fetching nodes for cluster %s: %v\n", clusterID, err)
+		log.Printf("Error fetching nodes for cluster %s: %v", clusterID, err)
 	} else if len(nodesSnapshots) > 0 {
 		latestSnapshot := nodesSnapshots[0]
 		payloadString := extractPayloadString(latestSnapshot)
 		if payloadString != "" {
 			nodes := parseNodes(payloadString, clusterDerived.Pods, clusterDerived.Images)
 			clusterDerived.Nodes = nodes
-			log.Printf("Parsed %d nodes from nodes snapshot\n", len(nodes))
+			log.Printf("Parsed %d nodes from nodes snapshot", len(nodes))
 		}
 	}
 
 	namespacesSnapshots, err := storage.FetchSnapshots(clusterID, "namespaces")
 	if err != nil {
-		log.Printf("Error fetching namespaces for cluster %s: %v\n", clusterID, err)
+		log.Printf("Error fetching namespaces for cluster %s: %v", clusterID, err)
 	} else if len(namespacesSnapshots) > 0 {
 		latestSnapshot := namespacesSnapshots[0]
 		payloadString := extractPayloadString(latestSnapshot)
 		if payloadString != "" {
 			namespaces := parseNamespaces(payloadString, clusterDerived.Workloads, clusterDerived.Images)
 			clusterDerived.Namespaces = namespaces
-			log.Printf("Parsed %d namespaces from namespaces snapshot\n", len(namespaces))
+			log.Printf("Parsed %d namespaces from namespaces snapshot", len(namespaces))
 		}
 	}
 
 	return clusterDerived, nil
 }
 
+// Snapshots are stored as the full ingest envelope ({cluster_id, kind, payload}),
+// so the content we actually want to parse is always the inner "payload" field.
+// We re-marshal it to JSON because the downstream parsers all work with strings.
 func extractPayloadString(snapshot map[string]interface{}) string {
-	payloadValue, ok := snapshot["payload"]
+	envelope, ok := snapshot["payload"].(map[string]interface{})
 	if !ok {
 		return ""
 	}
-
-	payloadMap, isMap := payloadValue.(map[string]interface{})
-	if isMap {
-		nestedPayload, hasNested := payloadMap["payload"]
-		if hasNested {
-			payloadBytes, err := json.Marshal(nestedPayload)
-			if err == nil {
-				return string(payloadBytes)
-			}
-		}
-
-		payloadBytes, err := json.Marshal(payloadMap)
-		if err == nil {
-			return string(payloadBytes)
-		}
+	inner, ok := envelope["payload"]
+	if !ok {
+		return ""
 	}
-
-	payloadStr, isStr := payloadValue.(string)
-	if isStr {
-		return payloadStr
+	bytes, err := json.Marshal(inner)
+	if err != nil {
+		return ""
 	}
-
-	return ""
+	return string(bytes)
 }
 
 func countVulnerabilitiesBySeverity(vulnerabilities []interface{}) models.SeverityCounts {
-	severityCounts := models.SeverityCounts{
-		Critical: 0,
-		High:     0,
-		Medium:   0,
-		Low:      0,
-	}
-
-	for _, vulnInterface := range vulnerabilities {
-		vuln, ok := vulnInterface.(map[string]interface{})
+	var counts models.SeverityCounts
+	for _, v := range vulnerabilities {
+		vuln, ok := v.(map[string]interface{})
 		if !ok {
 			continue
 		}
-
-		severity, ok := vuln["Severity"].(string)
-		if !ok {
-			continue
-		}
-
+		severity, _ := vuln["Severity"].(string)
 		switch severity {
 		case "CRITICAL":
-			severityCounts.Critical++
+			counts.Critical++
 		case "HIGH":
-			severityCounts.High++
+			counts.High++
 		case "MEDIUM":
-			severityCounts.Medium++
+			counts.Medium++
 		case "LOW":
-			severityCounts.Low++
+			counts.Low++
 		}
 	}
 
-	return severityCounts
+	return counts
 }
 
 func parseImages(imageScansPayload string) []ImageEnriched {
@@ -147,7 +125,7 @@ func parseImages(imageScansPayload string) []ImageEnriched {
 	var imageScansList []interface{}
 	err := json.Unmarshal([]byte(imageScansPayload), &imageScansList)
 	if err != nil {
-		log.Printf("Error unmarshaling image-scans payload: %v\n", err)
+		log.Printf("Error unmarshaling image-scans payload: %v", err)
 		return imagesEnriched
 	}
 
@@ -168,52 +146,27 @@ func parseImages(imageScansPayload string) []ImageEnriched {
 			continue
 		}
 
-		severityCounts := models.SeverityCounts{
-			Critical: 0,
-			High:     0,
-			Medium:   0,
-			Low:      0,
-		}
-
-		resultsInterface, hasResults := scan["Results"]
-		if hasResults {
-			resultsList, ok := resultsInterface.([]interface{})
-			if ok {
-				for _, resultInterface := range resultsList {
-					result, ok := resultInterface.(map[string]interface{})
-					if !ok {
-						continue
-					}
-
-					vulnerabilitiesInterface, hasVulns := result["Vulnerabilities"]
-					if !hasVulns {
-						continue
-					}
-
-					vulnerabilities, ok := vulnerabilitiesInterface.([]interface{})
-					if !ok {
-						continue
-					}
-
-					counts := countVulnerabilitiesBySeverity(vulnerabilities)
-					severityCounts.Critical += counts.Critical
-					severityCounts.High += counts.High
-					severityCounts.Medium += counts.Medium
-					severityCounts.Low += counts.Low
+		var counts models.SeverityCounts
+		if results, ok := scan["Results"].([]interface{}); ok {
+			for _, r := range results {
+				result, ok := r.(map[string]interface{})
+				if !ok {
+					continue
 				}
+				vulns, ok := result["Vulnerabilities"].([]interface{})
+				if !ok {
+					continue
+				}
+				counts.Add(countVulnerabilitiesBySeverity(vulns))
 			}
 		}
 
-		existing, found := imageMap[imageName]
-		if found {
-			existing.Vulnerabilities.Critical += severityCounts.Critical
-			existing.Vulnerabilities.High += severityCounts.High
-			existing.Vulnerabilities.Medium += severityCounts.Medium
-			existing.Vulnerabilities.Low += severityCounts.Low
+		if existing, ok := imageMap[imageName]; ok {
+			existing.Vulnerabilities.Add(counts)
 		} else {
 			imageMap[imageName] = &ImageEnriched{
 				Name:            imageName,
-				Vulnerabilities: severityCounts,
+				Vulnerabilities: counts,
 				UsedBy:          []string{},
 				Nodes:           []string{},
 				Status:          "active",
@@ -234,7 +187,7 @@ func parsePods(workloadsPayload string) []PodEnriched {
 	var payloadData map[string]interface{}
 	err := json.Unmarshal([]byte(workloadsPayload), &payloadData)
 	if err != nil {
-		log.Printf("Error unmarshaling workloads payload: %v\n", err)
+		log.Printf("Error unmarshaling workloads payload: %v", err)
 		return podsEnriched
 	}
 
@@ -370,7 +323,7 @@ func parseWorkloads(workloadsPayload string, pods []PodEnriched, images []ImageE
 	var payloadData map[string]interface{}
 	err := json.Unmarshal([]byte(workloadsPayload), &payloadData)
 	if err != nil {
-		log.Printf("Error unmarshaling workloads payload: %v\n", err)
+		log.Printf("Error unmarshaling workloads payload: %v", err)
 		return workloadsEnriched
 	}
 
@@ -443,32 +396,21 @@ func parseWorkloads(workloadsPayload string, pods []PodEnriched, images []ImageE
 				}
 			}
 
-			vulnerabilityCounts := models.SeverityCounts{
-				Critical: 0,
-				High:     0,
-				Medium:   0,
-				Low:      0,
-			}
-
+			var vulns models.SeverityCounts
 			for _, imageName := range workloadImages {
-				if imageData, exists := imageMap[imageName]; exists {
-					vulnerabilityCounts.Critical += imageData.Vulnerabilities.Critical
-					vulnerabilityCounts.High += imageData.Vulnerabilities.High
-					vulnerabilityCounts.Medium += imageData.Vulnerabilities.Medium
-					vulnerabilityCounts.Low += imageData.Vulnerabilities.Low
+				if img, ok := imageMap[imageName]; ok {
+					vulns.Add(img.Vulnerabilities)
 				}
 			}
 
-			workloadEnriched := WorkloadEnriched{
+			workloadsEnriched = append(workloadsEnriched, WorkloadEnriched{
 				Name:            workloadName,
 				Kind:            kindEntry.kindLabel,
 				Namespace:       workloadNamespace,
 				PodCount:        workloadPodsCount,
 				Images:          workloadImages,
-				Vulnerabilities: vulnerabilityCounts,
-			}
-
-			workloadsEnriched = append(workloadsEnriched, workloadEnriched)
+				Vulnerabilities: vulns,
+			})
 		}
 	}
 
@@ -481,7 +423,7 @@ func parseNodes(nodesPayload string, pods []PodEnriched, images []ImageEnriched)
 	var payloadData map[string]interface{}
 	err := json.Unmarshal([]byte(nodesPayload), &payloadData)
 	if err != nil {
-		log.Printf("Error unmarshaling nodes payload: %v\n", err)
+		log.Printf("Error unmarshaling nodes payload: %v", err)
 		return nodesEnriched
 	}
 
@@ -577,30 +519,19 @@ func parseNodes(nodesPayload string, pods []PodEnriched, images []ImageEnriched)
 			}
 		}
 
-		vulnerabilityCounts := models.SeverityCounts{
-			Critical: 0,
-			High:     0,
-			Medium:   0,
-			Low:      0,
-		}
-
+		var vulns models.SeverityCounts
 		for _, imageName := range usedImages {
-			if imageData, exists := imageMap[imageName]; exists {
-				vulnerabilityCounts.Critical += imageData.Vulnerabilities.Critical
-				vulnerabilityCounts.High += imageData.Vulnerabilities.High
-				vulnerabilityCounts.Medium += imageData.Vulnerabilities.Medium
-				vulnerabilityCounts.Low += imageData.Vulnerabilities.Low
+			if img, ok := imageMap[imageName]; ok {
+				vulns.Add(img.Vulnerabilities)
 			}
 		}
 
-		nodeEnriched := NodeEnriched{
+		nodesEnriched = append(nodesEnriched, NodeEnriched{
 			Name:            nodeName,
 			UsedImages:      usedImages,
 			UnusedImages:    unusedImages,
-			Vulnerabilities: vulnerabilityCounts,
-		}
-
-		nodesEnriched = append(nodesEnriched, nodeEnriched)
+			Vulnerabilities: vulns,
+		})
 	}
 
 	return nodesEnriched
@@ -612,7 +543,7 @@ func parseNamespaces(namespacesPayload string, workloads []WorkloadEnriched, ima
 	var payloadData map[string]interface{}
 	err := json.Unmarshal([]byte(namespacesPayload), &payloadData)
 	if err != nil {
-		log.Printf("Error unmarshaling namespaces payload: %v\n", err)
+		log.Printf("Error unmarshaling namespaces payload: %v", err)
 		return namespacesEnriched
 	}
 
@@ -678,34 +609,20 @@ func parseNamespaces(namespacesPayload string, workloads []WorkloadEnriched, ima
 			}
 		}
 
-		workloadCount := namespaceWorkloadsMap[namespaceName]
-		imageCount := len(namespaceImagesMap[namespaceName])
-
-		vulnerabilityCounts := models.SeverityCounts{
-			Critical: 0,
-			High:     0,
-			Medium:   0,
-			Low:      0,
-		}
-
+		var vulns models.SeverityCounts
 		for imageName := range namespaceImagesMap[namespaceName] {
-			if imageData, exists := imageMap[imageName]; exists {
-				vulnerabilityCounts.Critical += imageData.Vulnerabilities.Critical
-				vulnerabilityCounts.High += imageData.Vulnerabilities.High
-				vulnerabilityCounts.Medium += imageData.Vulnerabilities.Medium
-				vulnerabilityCounts.Low += imageData.Vulnerabilities.Low
+			if img, ok := imageMap[imageName]; ok {
+				vulns.Add(img.Vulnerabilities)
 			}
 		}
 
-		namespaceEnriched := NamespaceEnriched{
+		namespacesEnriched = append(namespacesEnriched, NamespaceEnriched{
 			Name:            namespaceName,
-			WorkloadCount:   workloadCount,
-			ImageCount:      imageCount,
-			Vulnerabilities: vulnerabilityCounts,
+			WorkloadCount:   namespaceWorkloadsMap[namespaceName],
+			ImageCount:      len(namespaceImagesMap[namespaceName]),
+			Vulnerabilities: vulns,
 			Labels:          namespaceLabels,
-		}
-
-		namespacesEnriched = append(namespacesEnriched, namespaceEnriched)
+		})
 	}
 
 	return namespacesEnriched

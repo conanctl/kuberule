@@ -96,6 +96,8 @@ func createTables() {
 		log.Fatal(err)
 	}
 
+	// resolved_at was added after the initial schema so that running upgrades
+	// on an already-deployed database don't need a manual migration step.
 	alterFindingsQuery := `
 		ALTER TABLE findings
 		ADD COLUMN IF NOT EXISTS resolved_at TIMESTAMP NULL
@@ -469,9 +471,8 @@ func FetchScanHistory(clusterID string, limit int) ([]map[string]interface{}, er
 		scans = append(scans, scan)
 	}
 
-	rowsErr := rows.Err()
-	if rowsErr != nil {
-		return nil, rowsErr
+	if err := rows.Err(); err != nil {
+		return nil, err
 	}
 
 	return scans, nil
@@ -497,9 +498,8 @@ func FetchDistinctClusterIDs() ([]string, error) {
 		clusterIDs = append(clusterIDs, clusterID)
 	}
 
-	rowsErr := rows.Err()
-	if rowsErr != nil {
-		return nil, rowsErr
+	if err := rows.Err(); err != nil {
+		return nil, err
 	}
 
 	return clusterIDs, nil
@@ -542,9 +542,8 @@ func CountFindingsBySeverity(clusterID string, status string) (map[string]int, e
 		counts[severity] = count
 	}
 
-	rowsErr := rows.Err()
-	if rowsErr != nil {
-		return nil, rowsErr
+	if err := rows.Err(); err != nil {
+		return nil, err
 	}
 
 	return counts, nil
@@ -582,9 +581,8 @@ func CountFindingsByCategory(clusterID string, status string) (map[string]int, e
 		counts[category] = count
 	}
 
-	rowsErr := rows.Err()
-	if rowsErr != nil {
-		return nil, rowsErr
+	if err := rows.Err(); err != nil {
+		return nil, err
 	}
 
 	return counts, nil
@@ -626,9 +624,8 @@ func CountFindingsByStatus(clusterID string) (map[string]int, error) {
 		counts[status] = count
 	}
 
-	rowsErr := rows.Err()
-	if rowsErr != nil {
-		return nil, rowsErr
+	if err := rows.Err(); err != nil {
+		return nil, err
 	}
 
 	return counts, nil
@@ -688,9 +685,8 @@ func CountFindingsByOwner(clusterID string, status string) ([]map[string]interfa
 		ownerMap[owner]["total"] += count
 	}
 
-	rowsErr := rows.Err()
-	if rowsErr != nil {
-		return nil, rowsErr
+	if err := rows.Err(); err != nil {
+		return nil, err
 	}
 
 	result := []map[string]interface{}{}
@@ -746,9 +742,8 @@ func ListClusterRiskSummaries() ([]map[string]interface{}, error) {
 		clusterMap[clusterID][severity] = count
 	}
 
-	rowsErr := rows.Err()
-	if rowsErr != nil {
-		return nil, rowsErr
+	if err := rows.Err(); err != nil {
+		return nil, err
 	}
 
 	result := []map[string]interface{}{}
@@ -777,6 +772,10 @@ func ListClusterRiskSummaries() ([]map[string]interface{}, error) {
 	return result, nil
 }
 
+// AutoResolveFindings closes out any findings that were not re-produced by the
+// current evaluation cycle. seenKeys is the set of "guardrail_id|target" pairs
+// that the evaluator still considered a violation — anything else that was
+// previously open/acknowledged is now compliant again.
 func AutoResolveFindings(clusterID string, seenKeys []string) (int, error) {
 	if clusterID == "" {
 		return 0, fmt.Errorf("cluster_id is required for auto-resolve")
@@ -878,9 +877,8 @@ func FetchEvaluationHistory(clusterID string, limit int) ([]map[string]interface
 		history = append(history, entry)
 	}
 
-	rowsErr := rows.Err()
-	if rowsErr != nil {
-		return nil, rowsErr
+	if err := rows.Err(); err != nil {
+		return nil, err
 	}
 
 	for i, j := 0, len(history)-1; i < j; i, j = i+1, j-1 {

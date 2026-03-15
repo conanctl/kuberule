@@ -31,13 +31,11 @@ func NewEvaluator(db *sql.DB) *Evaluator {
 func (e *Evaluator) Evaluate(clusterID string) ([]map[string]interface{}, error) {
 	guardrailPacksData, err := storage.FetchGuardrailPacks()
 	if err != nil {
-		log.Printf("Error fetching guardrail packs: %v\n", err)
 		return nil, err
 	}
 
 	clusterDerived, err := derived.BuildDerived(clusterID)
 	if err != nil {
-		log.Printf("Error building derived data for cluster %s: %v\n", clusterID, err)
 		return nil, err
 	}
 
@@ -52,27 +50,22 @@ func (e *Evaluator) Evaluate(clusterID string) ([]map[string]interface{}, error)
 	results := make([]map[string]interface{}, 0)
 
 	for _, packData := range guardrailPacksData {
-		packInterface, haspack := packData["pack"]
-		if !haspack {
-			log.Printf("Warning: guardrail pack missing pack field\n")
+		raw, ok := packData["pack"]
+		if !ok {
 			continue
 		}
 
-		packJsonBytes, err := json.Marshal(packInterface)
+		packJSON, err := json.Marshal(raw)
 		if err != nil {
-			log.Printf("Error marshaling pack: %v\n", err)
 			continue
 		}
 
 		var guardrailPack models.GuardrailPack
-		err = json.Unmarshal(packJsonBytes, &guardrailPack)
-		if err != nil {
-			log.Printf("Error unmarshaling guardrail pack: %v\n", err)
+		if err := json.Unmarshal(packJSON, &guardrailPack); err != nil {
 			continue
 		}
 
 		if !packAppliesToCluster(guardrailPack, clusterID) {
-			log.Printf("Skipping pack %s for cluster %s (scope mismatch)\n", guardrailPack.Metadata.Name, clusterID)
 			continue
 		}
 
@@ -108,14 +101,12 @@ func (e *Evaluator) Evaluate(clusterID string) ([]map[string]interface{}, error)
 						seenFindingKeySet[findingKey] = true
 					}
 
-					reopenErr := storage.ReopenResolvedFinding(guardrailEntry.ID, targetIdentifier)
-					if reopenErr != nil {
-						log.Printf("Error reopening resolved finding: %v\n", reopenErr)
+					if err := storage.ReopenResolvedFinding(guardrailEntry.ID, targetIdentifier); err != nil {
+						log.Printf("reopen finding %s/%s: %v", guardrailEntry.ID, targetIdentifier, err)
 					}
 
-					upsertErr := storage.UpsertFinding(finding)
-					if upsertErr != nil {
-						log.Printf("Error upserting finding: %v\n", upsertErr)
+					if err := storage.UpsertFinding(finding); err != nil {
+						log.Printf("upsert finding %s/%s: %v", guardrailEntry.ID, targetIdentifier, err)
 					}
 				}
 			}
@@ -124,11 +115,11 @@ func (e *Evaluator) Evaluate(clusterID string) ([]map[string]interface{}, error)
 		}
 	}
 
-	resolvedCount, autoResolveErr := storage.AutoResolveFindings(clusterID, seenFindingKeys)
-	if autoResolveErr != nil {
-		log.Printf("Error auto-resolving findings: %v\n", autoResolveErr)
+	resolvedCount, err := storage.AutoResolveFindings(clusterID, seenFindingKeys)
+	if err != nil {
+		log.Printf("auto-resolve findings: %v", err)
 	} else if resolvedCount > 0 {
-		log.Printf("Auto-resolved %d findings no longer present on cluster %s\n", resolvedCount, clusterID)
+		log.Printf("Auto-resolved %d findings no longer present on cluster %s", resolvedCount, clusterID)
 	}
 
 	recordEvaluationSnapshot(clusterID)
@@ -139,13 +130,13 @@ func (e *Evaluator) Evaluate(clusterID string) ([]map[string]interface{}, error)
 func recordEvaluationSnapshot(clusterID string) {
 	bySeverity, err := storage.CountFindingsBySeverity(clusterID, "open")
 	if err != nil {
-		log.Printf("Error counting by severity for run snapshot: %v\n", err)
+		log.Printf("evaluation snapshot (severity counts): %v", err)
 		return
 	}
 
 	byStatus, err := storage.CountFindingsByStatus(clusterID)
 	if err != nil {
-		log.Printf("Error counting by status for run snapshot: %v\n", err)
+		log.Printf("evaluation snapshot (status counts): %v", err)
 		return
 	}
 
@@ -169,9 +160,8 @@ func recordEvaluationSnapshot(clusterID string) {
 		compliancePct = float64(resolvedCount) / float64(totalCount) * 100.0
 	}
 
-	insertErr := storage.InsertEvaluationRun(clusterID, totalCount, openCount, resolvedCount, critical, high, medium, low, healthScore, compliancePct)
-	if insertErr != nil {
-		log.Printf("Error recording evaluation run: %v\n", insertErr)
+	if err := storage.InsertEvaluationRun(clusterID, totalCount, openCount, resolvedCount, critical, high, medium, low, healthScore, compliancePct); err != nil {
+		log.Printf("record evaluation run: %v", err)
 	}
 }
 
@@ -208,7 +198,7 @@ func (e *Evaluator) collectTargets(guardrailEntry models.GuardrailEntry, cluster
 		}
 		return targets
 	default:
-		log.Printf("Warning: unknown target type %s\n", guardrailEntry.Target)
+		log.Printf("Warning: unknown target type %s", guardrailEntry.Target)
 		return make([]interface{}, 0)
 	}
 }
@@ -228,108 +218,72 @@ func (e *Evaluator) evaluateCheck(guardrailEntry models.GuardrailEntry, target i
 	case "health_checks":
 		return e.checkHealthChecks(target, guardrailEntry.Check.Params)
 	default:
-		log.Printf("Warning: unknown check type %s\n", guardrailEntry.Check.Type)
+		log.Printf("Warning: unknown check type %s", guardrailEntry.Check.Type)
 		return true, make(map[string]interface{})
 	}
+}
+
+func pass() (bool, map[string]interface{}) {
+	return true, map[string]interface{}{}
 }
 
 func (e *Evaluator) checkVulnThreshold(target interface{}, params map[string]interface{}) (bool, map[string]interface{}) {
-	imageEnriched, ok := target.(derived.ImageEnriched)
+	img, ok := target.(derived.ImageEnriched)
 	if !ok {
-		log.Printf("Warning: target is not ImageEnriched type\n")
-		return true, make(map[string]interface{})
+		return pass()
 	}
 
-	maxCriticalInterface, hasMaxCritical := params["maxCritical"]
-	if !hasMaxCritical {
-		log.Printf("Warning: maxCritical parameter missing\n")
-		return true, make(map[string]interface{})
+	maxCritical := intParam(params, "maxCritical", 0)
+	if img.Vulnerabilities.Critical <= maxCritical {
+		return pass()
 	}
 
-	maxCriticalFloat, ok := maxCriticalInterface.(float64)
-	if !ok {
-		log.Printf("Warning: maxCritical is not a number\n")
-		return true, make(map[string]interface{})
+	return false, map[string]interface{}{
+		"critical":     img.Vulnerabilities.Critical,
+		"high":         img.Vulnerabilities.High,
+		"medium":       img.Vulnerabilities.Medium,
+		"low":          img.Vulnerabilities.Low,
+		"max_critical": maxCritical,
 	}
-
-	maxCritical := int(maxCriticalFloat)
-
-	if imageEnriched.Vulnerabilities.Critical > maxCritical {
-		evidence := map[string]interface{}{
-			"critical":     imageEnriched.Vulnerabilities.Critical,
-			"high":         imageEnriched.Vulnerabilities.High,
-			"medium":       imageEnriched.Vulnerabilities.Medium,
-			"low":          imageEnriched.Vulnerabilities.Low,
-			"max_critical": maxCritical,
-		}
-		return false, evidence
-	}
-
-	return true, make(map[string]interface{})
 }
 
 func (e *Evaluator) checkRequiredLabel(target interface{}, params map[string]interface{}) (bool, map[string]interface{}) {
-	namespaceEnriched, ok := target.(derived.NamespaceEnriched)
+	ns, ok := target.(derived.NamespaceEnriched)
 	if !ok {
-		log.Printf("Warning: target is not NamespaceEnriched type\n")
-		return true, make(map[string]interface{})
+		return pass()
 	}
 
-	labelKeyInterface, hasLabelKey := params["labelKey"]
-	if !hasLabelKey {
-		log.Printf("Warning: labelKey parameter missing\n")
-		return true, make(map[string]interface{})
+	labelKey := stringParam(params, "labelKey", "")
+	if labelKey == "" {
+		return pass()
 	}
 
-	labelKey, ok := labelKeyInterface.(string)
-	if !ok {
-		log.Printf("Warning: labelKey is not a string\n")
-		return true, make(map[string]interface{})
+	if _, ok := ns.Labels[labelKey]; ok {
+		return pass()
 	}
 
-	_, labelExists := namespaceEnriched.Labels[labelKey]
-	if !labelExists {
-		evidence := map[string]interface{}{
-			"missing_label":  labelKey,
-			"present_labels": namespaceEnriched.Labels,
-		}
-		return false, evidence
+	return false, map[string]interface{}{
+		"missing_label":  labelKey,
+		"present_labels": ns.Labels,
 	}
-
-	return true, make(map[string]interface{})
 }
 
 func (e *Evaluator) checkUnusedImages(target interface{}, params map[string]interface{}) (bool, map[string]interface{}) {
-	nodeEnriched, ok := target.(derived.NodeEnriched)
+	node, ok := target.(derived.NodeEnriched)
 	if !ok {
-		log.Printf("Warning: target is not NodeEnriched type\n")
-		return true, make(map[string]interface{})
+		return pass()
 	}
 
-	maxUnusedInterface, hasMaxUnused := params["maxUnused"]
-	if !hasMaxUnused {
-		log.Printf("Warning: maxUnused parameter missing\n")
-		return true, make(map[string]interface{})
+	maxUnused := intParam(params, "maxUnused", 0)
+	if len(node.UnusedImages) <= maxUnused {
+		return pass()
 	}
 
-	maxUnusedFloat, ok := maxUnusedInterface.(float64)
-	if !ok {
-		log.Printf("Warning: maxUnused is not a number\n")
-		return true, make(map[string]interface{})
+	return false, map[string]interface{}{
+		"unused_count":  len(node.UnusedImages),
+		"max_unused":    maxUnused,
+		"unused_images": node.UnusedImages,
 	}
-
-	maxUnused := int(maxUnusedFloat)
-
-	if len(nodeEnriched.UnusedImages) > maxUnused {
-		evidence := map[string]interface{}{
-			"unused_count":  len(nodeEnriched.UnusedImages),
-			"max_unused":    maxUnused,
-			"unused_images": nodeEnriched.UnusedImages,
-		}
-		return false, evidence
-	}
-
-	return true, make(map[string]interface{})
 }
 
 func packAppliesToCluster(pack models.GuardrailPack, clusterID string) bool {
@@ -425,7 +379,7 @@ func (e *Evaluator) createFinding(guardrailEntry models.GuardrailEntry, target i
 		targetIdentifier = t.Name
 		namespace = t.Namespace
 	default:
-		log.Printf("Warning: unknown target type for finding\n")
+		log.Printf("Warning: unknown target type for finding")
 		targetIdentifier = "unknown"
 	}
 
@@ -459,175 +413,114 @@ func (e *Evaluator) createFinding(guardrailEntry models.GuardrailEntry, target i
 }
 
 func (e *Evaluator) checkResourceLimits(target interface{}, params map[string]interface{}) (bool, map[string]interface{}) {
-	podEnriched, ok := target.(derived.PodEnriched)
+	pod, ok := target.(derived.PodEnriched)
 	if !ok {
-		log.Printf("Warning: target is not PodEnriched type\n")
-		return true, make(map[string]interface{})
+		return pass()
 	}
 
-	requireLimits := true
-	requireRequests := true
+	requireLimits := boolParam(params, "requireLimits", true)
+	requireRequests := boolParam(params, "requireRequests", true)
 
-	if reqLimitsInterface, hasReqLimits := params["requireLimits"]; hasReqLimits {
-		if reqLimitsBool, ok := reqLimitsInterface.(bool); ok {
-			requireLimits = reqLimitsBool
+	hasResourceFields := func(resources map[string]interface{}, key string) bool {
+		fields, ok := resources[key].(map[string]interface{})
+		if !ok || fields == nil {
+			return false
 		}
+		return fields["cpu"] != nil || fields["memory"] != nil
 	}
 
-	if reqRequestsInterface, hasReqRequests := params["requireRequests"]; hasReqRequests {
-		if reqRequestsBool, ok := reqRequestsInterface.(bool); ok {
-			requireRequests = reqRequestsBool
+	var missingLimits, missingRequests []string
+	for _, c := range pod.Containers {
+		if requireLimits && !hasResourceFields(c.Resources, "limits") {
+			missingLimits = append(missingLimits, c.Name)
 		}
-	}
-
-	missingLimits := []string{}
-	missingRequests := []string{}
-
-	for _, container := range podEnriched.Containers {
-		if container.Resources == nil {
-			if requireLimits {
-				missingLimits = append(missingLimits, container.Name)
-			}
-			if requireRequests {
-				missingRequests = append(missingRequests, container.Name)
-			}
-			continue
-		}
-
-		if requireLimits {
-			limits, hasLimits := container.Resources["limits"].(map[string]interface{})
-			if !hasLimits || limits == nil || (limits["cpu"] == nil && limits["memory"] == nil) {
-				missingLimits = append(missingLimits, container.Name)
-			}
-		}
-
-		if requireRequests {
-			requests, hasRequests := container.Resources["requests"].(map[string]interface{})
-			if !hasRequests || requests == nil || (requests["cpu"] == nil && requests["memory"] == nil) {
-				missingRequests = append(missingRequests, container.Name)
-			}
+		if requireRequests && !hasResourceFields(c.Resources, "requests") {
+			missingRequests = append(missingRequests, c.Name)
 		}
 	}
 
-	if len(missingLimits) > 0 || len(missingRequests) > 0 {
-		evidence := map[string]interface{}{
-			"missing_limits":   missingLimits,
-			"missing_requests": missingRequests,
-		}
-		return false, evidence
+	if len(missingLimits) == 0 && len(missingRequests) == 0 {
+		return pass()
 	}
 
-	return true, make(map[string]interface{})
+	return false, map[string]interface{}{
+		"missing_limits":   missingLimits,
+		"missing_requests": missingRequests,
+	}
 }
 
 func (e *Evaluator) checkPodSecurityPolicy(target interface{}, params map[string]interface{}) (bool, map[string]interface{}) {
-	podEnriched, ok := target.(derived.PodEnriched)
+	pod, ok := target.(derived.PodEnriched)
 	if !ok {
-		log.Printf("Warning: target is not PodEnriched type\n")
-		return true, make(map[string]interface{})
+		return pass()
 	}
 
-	allowPrivileged := true
-	runAsNonRoot := false
+	allowPrivileged := boolParam(params, "allowPrivileged", true)
+	runAsNonRoot := boolParam(params, "runAsNonRoot", false)
 
-	if allowPrivInterface, hasAllowPriv := params["allowPrivileged"]; hasAllowPriv {
-		if allowPrivBool, ok := allowPrivInterface.(bool); ok {
-			allowPrivileged = allowPrivBool
-		}
-	}
+	var violations []string
 
-	if runAsNonRootInterface, hasRunAsNonRoot := params["runAsNonRoot"]; hasRunAsNonRoot {
-		if runAsNonRootBool, ok := runAsNonRootInterface.(bool); ok {
-			runAsNonRoot = runAsNonRootBool
-		}
-	}
-
-	violations := []string{}
-
-	if podEnriched.SecurityContext != nil {
-		if runAsNonRoot {
-			if runAsNonRootVal, hasRunAsNonRoot := podEnriched.SecurityContext["runAsNonRoot"].(bool); hasRunAsNonRoot {
-				if !runAsNonRootVal {
-					violations = append(violations, "Pod not running as non-root")
-				}
-			} else {
+	if runAsNonRoot {
+		switch {
+		case pod.SecurityContext == nil:
+			violations = append(violations, "Pod security context not set")
+		default:
+			v, set := pod.SecurityContext["runAsNonRoot"].(bool)
+			if !set {
 				violations = append(violations, "Pod runAsNonRoot not set")
-			}
-		}
-	} else if runAsNonRoot {
-		violations = append(violations, "Pod security context not set")
-	}
-
-	for _, container := range podEnriched.Containers {
-		if container.SecurityContext != nil {
-			if !allowPrivileged {
-				if privileged, hasPrivileged := container.SecurityContext["privileged"].(bool); hasPrivileged && privileged {
-					violations = append(violations, "Container "+container.Name+" running as privileged")
-				}
-			}
-
-			if runAsNonRoot {
-				if runAsNonRootVal, hasRunAsNonRoot := container.SecurityContext["runAsNonRoot"].(bool); hasRunAsNonRoot {
-					if !runAsNonRootVal {
-						violations = append(violations, "Container "+container.Name+" not running as non-root")
-					}
-				}
+			} else if !v {
+				violations = append(violations, "Pod not running as non-root")
 			}
 		}
 	}
 
-	if len(violations) > 0 {
-		evidence := map[string]interface{}{
-			"violations": violations,
+	for _, c := range pod.Containers {
+		if c.SecurityContext == nil {
+			continue
 		}
-		return false, evidence
+		if !allowPrivileged {
+			if priv, _ := c.SecurityContext["privileged"].(bool); priv {
+				violations = append(violations, "Container "+c.Name+" running as privileged")
+			}
+		}
+		if runAsNonRoot {
+			if v, set := c.SecurityContext["runAsNonRoot"].(bool); set && !v {
+				violations = append(violations, "Container "+c.Name+" not running as non-root")
+			}
+		}
 	}
 
-	return true, make(map[string]interface{})
+	if len(violations) == 0 {
+		return pass()
+	}
+	return false, map[string]interface{}{"violations": violations}
 }
 
 func (e *Evaluator) checkHealthChecks(target interface{}, params map[string]interface{}) (bool, map[string]interface{}) {
-	podEnriched, ok := target.(derived.PodEnriched)
+	pod, ok := target.(derived.PodEnriched)
 	if !ok {
-		log.Printf("Warning: target is not PodEnriched type\n")
-		return true, make(map[string]interface{})
+		return pass()
 	}
 
-	requireLiveness := false
-	requireReadiness := false
+	requireLiveness := boolParam(params, "requireLiveness", false)
+	requireReadiness := boolParam(params, "requireReadiness", false)
 
-	if reqLivenessInterface, hasReqLiveness := params["requireLiveness"]; hasReqLiveness {
-		if reqLivenessBool, ok := reqLivenessInterface.(bool); ok {
-			requireLiveness = reqLivenessBool
+	var missingLiveness, missingReadiness []string
+	for _, c := range pod.Containers {
+		if requireLiveness && len(c.LivenessProbe) == 0 {
+			missingLiveness = append(missingLiveness, c.Name)
+		}
+		if requireReadiness && len(c.ReadinessProbe) == 0 {
+			missingReadiness = append(missingReadiness, c.Name)
 		}
 	}
 
-	if reqReadinessInterface, hasReqReadiness := params["requireReadiness"]; hasReqReadiness {
-		if reqReadinessBool, ok := reqReadinessInterface.(bool); ok {
-			requireReadiness = reqReadinessBool
-		}
+	if len(missingLiveness) == 0 && len(missingReadiness) == 0 {
+		return pass()
 	}
 
-	missingLiveness := []string{}
-	missingReadiness := []string{}
-
-	for _, container := range podEnriched.Containers {
-		if requireLiveness && len(container.LivenessProbe) == 0 {
-			missingLiveness = append(missingLiveness, container.Name)
-		}
-
-		if requireReadiness && len(container.ReadinessProbe) == 0 {
-			missingReadiness = append(missingReadiness, container.Name)
-		}
+	return false, map[string]interface{}{
+		"missing_liveness":  missingLiveness,
+		"missing_readiness": missingReadiness,
 	}
-
-	if len(missingLiveness) > 0 || len(missingReadiness) > 0 {
-		evidence := map[string]interface{}{
-			"missing_liveness":  missingLiveness,
-			"missing_readiness": missingReadiness,
-		}
-		return false, evidence
-	}
-
-	return true, make(map[string]interface{})
 }
