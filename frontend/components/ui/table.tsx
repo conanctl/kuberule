@@ -17,5 +17,5 @@ export function TableRow({ className, ...props }: React.HTMLAttributes<HTMLTable
 }
 
 export function TableCell({ className, ...props }: React.TdHTMLAttributes<HTMLTableCellElement>) {
-  return <td className={cn("px-4 py-2 text-black", className)} {...props} />
+  return <td className={cn("px-4 py-2", className)} {...props} />
 }

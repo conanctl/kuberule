@@ -5,7 +5,7 @@ import { getFindings, updateFindingStatus } from "@/lib/api"
 import { useCluster } from "@/lib/cluster-context"
 import { DataTable } from "@/components/shared/data-table"
 import { Badge } from "@/components/ui/badge"
-import { Finding } from "@/lib/types"
+import { Finding, toSeverity } from "@/lib/types"
 import { ColumnDef } from "@tanstack/react-table"
 import { useState } from "react"
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs"
@@ -43,7 +43,7 @@ export default function FindingsPage() {
   if (isLoading) {
     return (
       <div className="flex items-center justify-center h-64">
-        <div className="text-lg text-black">Loading...</div>
+        <div className="text-lg">Loading...</div>
       </div>
     )
   }
@@ -72,7 +72,7 @@ export default function FindingsPage() {
       header: "Severity",
       cell: ({ row }) => {
         const severity = row.getValue("severity") as string
-        return <Badge variant={severity as any}>{severity.toUpperCase()}</Badge>
+        return <Badge variant={toSeverity(severity) ?? "default"}>{severity.toUpperCase()}</Badge>
       },
     },
     {
@@ -122,7 +122,7 @@ export default function FindingsPage() {
 
   return (
     <div>
-      <h1 className="text-3xl font-bold mb-8 text-black">Findings</h1>
+      <h1 className="text-3xl font-bold mb-8">Findings</h1>
 
       <Tabs defaultValue="all">
         <TabsList>
@@ -174,38 +174,38 @@ export default function FindingsPage() {
             </DialogHeader>
             <div className="space-y-4">
               <div>
-                <strong className="text-black">Guardrail ID:</strong>
-                <span className="text-black ml-2">{selectedFinding.guardrail_id}</span>
+                <strong className="">Guardrail ID:</strong>
+                <span className="ml-2">{selectedFinding.guardrail_id}</span>
               </div>
               <div>
-                <strong className="text-black">Severity:</strong>
+                <strong className="">Severity:</strong>
                 <span className="ml-2">
-                  <Badge variant={selectedFinding.severity as any}>{selectedFinding.severity}</Badge>
+                  <Badge variant={toSeverity(selectedFinding.severity) ?? "default"}>{selectedFinding.severity}</Badge>
                 </span>
               </div>
               <div>
-                <strong className="text-black">Category:</strong>
-                <span className="text-black ml-2">{selectedFinding.category}</span>
+                <strong className="">Category:</strong>
+                <span className="ml-2">{selectedFinding.category}</span>
               </div>
               <div>
-                <strong className="text-black">Target:</strong>
-                <span className="text-black ml-2">{selectedFinding.target_type} / {selectedFinding.target_identifier}</span>
+                <strong className="">Target:</strong>
+                <span className="ml-2">{selectedFinding.target_type} / {selectedFinding.target_identifier}</span>
               </div>
               <div>
-                <strong className="text-black">Cluster:</strong>
-                <span className="text-black ml-2">{selectedFinding.cluster_id}</span>
+                <strong className="">Cluster:</strong>
+                <span className="ml-2">{selectedFinding.cluster_id}</span>
               </div>
               <div>
-                <strong className="text-black">Namespace:</strong>
-                <span className="text-black ml-2">{selectedFinding.namespace}</span>
+                <strong className="">Namespace:</strong>
+                <span className="ml-2">{selectedFinding.namespace}</span>
               </div>
               <div>
-                <strong className="text-black">Current Status:</strong>
-                <span className="text-black ml-2">{selectedFinding.status}</span>
+                <strong className="">Current Status:</strong>
+                <span className="ml-2">{selectedFinding.status}</span>
               </div>
               <div>
-                <strong className="text-black">Remediation:</strong>
-                <span className="text-black ml-2">{selectedFinding.remediation_hint}</span>
+                <strong className="">Remediation:</strong>
+                <span className="ml-2">{selectedFinding.remediation_hint}</span>
               </div>
               <div className="flex gap-2 pt-4">
                 <Button

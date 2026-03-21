@@ -6,7 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { DataTable } from "@/components/shared/data-table"
-import { GuardrailPack, GuardrailEntry } from "@/lib/types"
+import { GuardrailPack, GuardrailEntry, toSeverity } from "@/lib/types"
 import { ColumnDef } from "@tanstack/react-table"
 import { useCluster } from "@/lib/cluster-context"
 
@@ -36,7 +36,7 @@ export default function GuardrailsPage() {
   if (isLoading) {
     return (
       <div className="flex items-center justify-center h-64">
-        <div className="text-lg text-black">Loading...</div>
+        <div className="text-lg">Loading...</div>
       </div>
     )
   }
@@ -80,7 +80,7 @@ export default function GuardrailsPage() {
       header: "Severity",
       cell: ({ row }) => {
         const severity = row.getValue("severity") as string
-        return <Badge variant={severity as any}>{severity}</Badge>
+        return <Badge variant={toSeverity(severity) ?? "default"}>{severity}</Badge>
       },
     },
     {
@@ -92,7 +92,7 @@ export default function GuardrailsPage() {
   return (
     <div>
       <div className="flex justify-between items-center mb-8">
-        <h1 className="text-3xl font-bold text-black">Guardrails</h1>
+        <h1 className="text-3xl font-bold">Guardrails</h1>
         <div className="flex gap-2">
           <Button
             onClick={() => reloadMutation.mutate()}
@@ -118,16 +118,16 @@ export default function GuardrailsPage() {
             <CardContent>
               <div className="space-y-2 text-sm">
                 <div>
-                  <strong className="text-black">Version:</strong>
-                  <span className="text-black ml-2">{pack.pack.metadata.version}</span>
+                  <strong className="">Version:</strong>
+                  <span className="ml-2">{pack.pack.metadata.version}</span>
                 </div>
                 <div>
-                  <strong className="text-black">Owner:</strong>
-                  <span className="text-black ml-2">{pack.pack.spec.owner}</span>
+                  <strong className="">Owner:</strong>
+                  <span className="ml-2">{pack.pack.spec.owner}</span>
                 </div>
                 <div>
-                  <strong className="text-black">Guardrails:</strong>
-                  <span className="text-black ml-2">{pack.pack.spec.guardrails.length}</span>
+                  <strong className="">Guardrails:</strong>
+                  <span className="ml-2">{pack.pack.spec.guardrails.length}</span>
                 </div>
               </div>
             </CardContent>

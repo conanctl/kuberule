@@ -3,7 +3,7 @@
 import { useQuery } from "@tanstack/react-query"
 import { getFindings, getMetrics } from "@/lib/api"
 import { MetricCard } from "@/components/shared/metric-card"
-import { Finding } from "@/lib/types"
+import { Finding, toSeverity } from "@/lib/types"
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Legend } from "recharts"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
@@ -36,7 +36,7 @@ export default function Dashboard() {
   if (metricsQuery.isLoading || findingsQuery.isLoading || aggregateMetricsQuery.isLoading) {
     return (
       <div className="flex items-center justify-center h-64">
-        <div className="text-lg text-black">Loading...</div>
+        <div className="text-lg">Loading...</div>
       </div>
     )
   }
@@ -85,7 +85,7 @@ export default function Dashboard() {
 
   return (
     <div>
-      <h1 className="text-3xl font-bold mb-8 text-black">Command Center</h1>
+      <h1 className="text-3xl font-bold mb-8">Command Center</h1>
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
         <MetricCard
@@ -156,7 +156,7 @@ export default function Dashboard() {
             )}
             {topClusters.map((cluster) => (
               <div key={cluster.cluster_id} className="flex justify-between items-center p-3 bg-gray-50 rounded">
-                <span className="font-medium text-black">{cluster.cluster_id}</span>
+                <span className="font-medium">{cluster.cluster_id}</span>
                 <span className="text-red-600 font-bold">Risk: {cluster.risk_score.toFixed(1)}</span>
               </div>
             ))}
@@ -172,11 +172,11 @@ export default function Dashboard() {
           <table className="w-full">
             <thead>
               <tr className="border-b">
-                <th className="text-left py-2 text-black">Severity</th>
-                <th className="text-left py-2 text-black">Title</th>
-                <th className="text-left py-2 text-black">Target</th>
-                <th className="text-left py-2 text-black">Cluster</th>
-                <th className="text-left py-2 text-black">First Seen</th>
+                <th className="text-left py-2">Severity</th>
+                <th className="text-left py-2">Title</th>
+                <th className="text-left py-2">Target</th>
+                <th className="text-left py-2">Cluster</th>
+                <th className="text-left py-2">First Seen</th>
               </tr>
             </thead>
             <tbody>
@@ -186,12 +186,12 @@ export default function Dashboard() {
                 .map((finding: Finding) => (
                   <tr key={finding.id} className="border-b">
                     <td className="py-2">
-                      <Badge variant={finding.severity as any}>{finding.severity}</Badge>
+                      <Badge variant={toSeverity(finding.severity) ?? "default"}>{finding.severity}</Badge>
                     </td>
-                    <td className="py-2 text-black">{finding.title}</td>
-                    <td className="py-2 text-black">{finding.target_identifier}</td>
-                    <td className="py-2 text-black">{finding.cluster_id}</td>
-                    <td className="py-2 text-black">{new Date(finding.first_seen_at).toLocaleDateString()}</td>
+                    <td className="py-2">{finding.title}</td>
+                    <td className="py-2">{finding.target_identifier}</td>
+                    <td className="py-2">{finding.cluster_id}</td>
+                    <td className="py-2">{new Date(finding.first_seen_at).toLocaleDateString()}</td>
                   </tr>
                 ))}
             </tbody>

@@ -24,7 +24,7 @@ export default function CompliancePage() {
   if (metricsQuery.isLoading) {
     return (
       <div className="flex items-center justify-center h-64">
-        <div className="text-lg text-black">Loading...</div>
+        <div className="text-lg">Loading...</div>
       </div>
     )
   }
@@ -100,7 +100,7 @@ export default function CompliancePage() {
 
   return (
     <div>
-      <h1 className="text-3xl font-bold mb-8 text-black">Compliance</h1>
+      <h1 className="text-3xl font-bold mb-8">Compliance</h1>
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
         <MetricCard
@@ -187,12 +187,12 @@ export default function CompliancePage() {
           <table className="w-full">
             <thead>
               <tr className="border-b">
-                <th className="text-left py-2 text-black">Team</th>
-                <th className="text-right py-2 text-black">Critical</th>
-                <th className="text-right py-2 text-black">High</th>
-                <th className="text-right py-2 text-black">Medium</th>
-                <th className="text-right py-2 text-black">Low</th>
-                <th className="text-right py-2 text-black">Total</th>
+                <th className="text-left py-2">Team</th>
+                <th className="text-right py-2">Critical</th>
+                <th className="text-right py-2">High</th>
+                <th className="text-right py-2">Medium</th>
+                <th className="text-right py-2">Low</th>
+                <th className="text-right py-2">Total</th>
               </tr>
             </thead>
             <tbody>
@@ -205,12 +205,12 @@ export default function CompliancePage() {
               )}
               {teamLeaderboard.map((team) => (
                 <tr key={team.team} className="border-b">
-                  <td className="py-2 text-black">{team.team}</td>
-                  <td className="text-right text-black">{team.critical}</td>
-                  <td className="text-right text-black">{team.high}</td>
-                  <td className="text-right text-black">{team.medium}</td>
-                  <td className="text-right text-black">{team.low}</td>
-                  <td className="text-right font-bold text-black">{team.total}</td>
+                  <td className="py-2">{team.team}</td>
+                  <td className="text-right">{team.critical}</td>
+                  <td className="text-right">{team.high}</td>
+                  <td className="text-right">{team.medium}</td>
+                  <td className="text-right">{team.low}</td>
+                  <td className="text-right font-bold">{team.total}</td>
                 </tr>
               ))}
             </tbody>

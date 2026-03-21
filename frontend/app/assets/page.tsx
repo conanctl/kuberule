@@ -21,7 +21,7 @@ export default function AssetsPage() {
   if (isLoading) {
     return (
       <div className="flex items-center justify-center h-64">
-        <div className="text-lg text-black">Loading...</div>
+        <div className="text-lg">Loading...</div>
       </div>
     )
   }
@@ -56,7 +56,7 @@ export default function AssetsPage() {
       header: "Workloads",
       cell: ({ row }) => {
         const workloads = row.getValue("used_by") as string[]
-        return <span className="text-black">{workloads.length}</span>
+        return <span className="">{workloads.length}</span>
       },
     },
     {
@@ -64,7 +64,7 @@ export default function AssetsPage() {
       header: "Nodes",
       cell: ({ row }) => {
         const nodes = row.getValue("nodes") as string[]
-        return <span className="text-black">{nodes.length}</span>
+        return <span className="">{nodes.length}</span>
       },
     },
     {
@@ -95,7 +95,7 @@ export default function AssetsPage() {
       header: "Images",
       cell: ({ row }) => {
         const images = row.getValue("images") as string[]
-        return <span className="text-black">{images.length}</span>
+        return <span className="">{images.length}</span>
       },
     },
     {
@@ -139,7 +139,7 @@ export default function AssetsPage() {
       header: "Used Images",
       cell: ({ row }) => {
         const images = row.getValue("used_images") as string[]
-        return <span className="text-black">{images.length}</span>
+        return <span className="">{images.length}</span>
       },
     },
     {
@@ -147,7 +147,7 @@ export default function AssetsPage() {
       header: "Unused Images",
       cell: ({ row }) => {
         const images = row.getValue("unused_images") as string[]
-        return <span className="text-black">{images.length}</span>
+        return <span className="">{images.length}</span>
       },
     },
     {
@@ -162,7 +162,7 @@ export default function AssetsPage() {
   return (
     <div>
       <div className="mb-8">
-        <h1 className="text-3xl font-bold text-black mb-4">Assets</h1>
+        <h1 className="text-3xl font-bold mb-4">Assets</h1>
         <p className="text-sm text-gray-600">Showing data for cluster: <span className="font-mono">{selectedCluster || "none"}</span></p>
       </div>
 

@@ -18,7 +18,7 @@ export function TabsTrigger({ className, ...props }: React.ComponentProps<typeof
   return (
     <TabsPrimitive.Trigger
       className={cn(
-        "px-4 py-2 border-b-2 border-transparent text-black data-[state=active]:border-blue-600 data-[state=active]:text-blue-600",
+        "px-4 py-2 border-b-2 border-transparent data-[state=active]:border-blue-600 data-[state=active]:text-blue-600",
         className
       )}
       {...props}

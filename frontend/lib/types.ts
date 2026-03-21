@@ -1,3 +1,12 @@
+export type Severity = "critical" | "high" | "medium" | "low"
+
+export const SEVERITIES: readonly Severity[] = ["critical", "high", "medium", "low"]
+
+export function toSeverity(raw: string): Severity | null {
+  const s = raw.toLowerCase() as Severity
+  return SEVERITIES.includes(s) ? s : null
+}
+
 export interface SeverityCounts {
   critical: number
   high: number
