@@ -13,6 +13,9 @@ echo "starting for cluster: $CLUSTER_ID"
 echo "backend endpoint: $BACKEND_ENDPOINT"
 echo "collectors file: $COLLECTORS_FILE"
 
+# Linear backoff (15s, 30s, 45s, 60s, 75s) — short enough that a rolling backend
+# restart on the same collection cycle still has a chance of succeeding, long
+# enough that repeated failures don't hammer the API.
 send_with_retry() {
   ENDPOINT=$1
   TMPFILE=$2
