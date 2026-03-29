@@ -1,6 +1,7 @@
 package api
 
 import (
+	"bytes"
 	"encoding/json"
 	"io"
 	"log"
@@ -31,167 +32,6 @@ func SetupRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /metrics/history", corsMiddleware(MetricsHistoryHandler))
 }
 
-func MetricsHistoryHandler(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", "application/json")
-
-	clusterID := r.URL.Query().Get("cluster_id")
-	if clusterID == "" {
-		http.Error(w, "cluster_id query parameter is required", http.StatusBadRequest)
-		return
-	}
-
-	limit := 50
-	if s := r.URL.Query().Get("limit"); s != "" {
-		if n, err := strconv.Atoi(s); err == nil && n > 0 {
-			limit = n
-		}
-	}
-
-	history, err := storage.FetchEvaluationHistory(clusterID, limit)
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
-
-	response := map[string]interface{}{
-		"cluster_id": clusterID,
-		"history":    history,
-	}
-
-	err = json.NewEncoder(w).Encode(response)
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
-}
-
-func computeHealthScore(critical int, high int, medium int) int {
-	score := 100 - (critical*10 + high*5 + medium*1)
-	if score < 0 {
-		return 0
-	}
-	return score
-}
-
-func computeCompliancePct(open int, acknowledged int, resolved int) float64 {
-	total := open + acknowledged + resolved
-	if total == 0 {
-		return 100.0
-	}
-	return float64(resolved) / float64(total) * 100.0
-}
-
-func MetricsHandler(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", "application/json")
-
-	clusterID := r.URL.Query().Get("cluster_id")
-
-	bySeverity, err := storage.CountFindingsBySeverity(clusterID, "open")
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
-
-	byCategory, err := storage.CountFindingsByCategory(clusterID, "open")
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
-
-	byOwner, err := storage.CountFindingsByOwner(clusterID, "open")
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
-
-	byStatus, err := storage.CountFindingsByStatus(clusterID)
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
-
-	activeGuardrails, err := storage.CountActiveGuardrails()
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
-
-	critical := bySeverity["critical"]
-	high := bySeverity["high"]
-	medium := bySeverity["medium"]
-
-	openCount := byStatus["open"]
-	acknowledgedCount := byStatus["acknowledged"]
-	resolvedCount := byStatus["resolved"]
-
-	healthScore := computeHealthScore(critical, high, medium)
-	compliancePct := computeCompliancePct(openCount, acknowledgedCount, resolvedCount)
-
-	totalFindings := openCount + acknowledgedCount + resolvedCount
-
-	response := map[string]interface{}{
-		"cluster_id":            clusterID,
-		"health_score":          healthScore,
-		"compliance_pct":        compliancePct,
-		"total_findings":        totalFindings,
-		"open_findings":         openCount,
-		"acknowledged_findings": acknowledgedCount,
-		"resolved_findings":     resolvedCount,
-		"active_guardrails":     activeGuardrails,
-		"by_severity":           bySeverity,
-		"by_category":           byCategory,
-		"by_owner":              byOwner,
-	}
-
-	if clusterID == "" {
-		perCluster, err := storage.ListClusterRiskSummaries()
-		if err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
-			return
-		}
-		response["per_cluster"] = perCluster
-	}
-
-	err = json.NewEncoder(w).Encode(response)
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
-}
-
-func ClustersHandler(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", "application/json")
-
-	clusters, err := storage.FetchDistinctClusterIDs()
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
-
-	response := map[string]interface{}{
-		"clusters": clusters,
-	}
-
-	err = json.NewEncoder(w).Encode(response)
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
-}
-
-func HealthCheck(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusOK)
-
-	response := map[string]string{
-		"status": "ok",
-	}
-
-	if err := json.NewEncoder(w).Encode(response); err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-	}
-}
-
 func corsMiddleware(next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Access-Control-Allow-Origin", "*")
@@ -207,290 +47,159 @@ func corsMiddleware(next http.HandlerFunc) http.HandlerFunc {
 	}
 }
 
-func IngestHandler(w http.ResponseWriter, r *http.Request) {
+func writeJSON(w http.ResponseWriter, status int, body interface{}) {
 	w.Header().Set("Content-Type", "application/json")
-
-	bodyBytes, err := io.ReadAll(r.Body)
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
+	w.WriteHeader(status)
+	if err := json.NewEncoder(w).Encode(body); err != nil {
+		log.Printf("encode response: %v", err)
 	}
-	defer r.Body.Close()
+}
 
-	var bodyData map[string]interface{}
-	err = json.Unmarshal(bodyBytes, &bodyData)
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
+func writeErr(w http.ResponseWriter, status int, msg string) {
+	writeJSON(w, status, errorResponse{Error: msg})
+}
 
-	clusterIDValue, clusterIDExists := bodyData["cluster_id"]
-	kindValue, kindExists := bodyData["kind"]
+func HealthCheck(w http.ResponseWriter, r *http.Request) {
+	writeJSON(w, http.StatusOK, healthResponse{Status: "ok"})
+}
 
-	var clusterID string
-	var kind string
-
-	if clusterIDExists {
-		clusterID, _ = clusterIDValue.(string)
-	}
-
-	if kindExists {
-		kind, _ = kindValue.(string)
-	}
-
-	if clusterID == "" || kind == "" {
-		w.WriteHeader(http.StatusBadRequest)
-		errorResponse := map[string]string{
-			"error": "missing cluster_id or kind",
-		}
-		err := json.NewEncoder(w).Encode(errorResponse)
-		if err != nil {
-			return
-		}
+func IngestHandler(w http.ResponseWriter, r *http.Request) {
+	var raw bytes.Buffer
+	var req ingestRequest
+	if err := json.NewDecoder(io.TeeReader(r.Body, &raw)).Decode(&req); err != nil {
+		writeErr(w, http.StatusBadRequest, err.Error())
 		return
 	}
 
-	if err := storage.InsertSnapshot(clusterID, kind, string(bodyBytes)); err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+	if req.ClusterID == "" || req.Kind == "" {
+		writeErr(w, http.StatusBadRequest, "missing cluster_id or kind")
 		return
 	}
 
-	w.WriteHeader(http.StatusOK)
-	response := map[string]interface{}{
-		"status":     "ingested",
-		"cluster_id": clusterID,
-		"kind":       kind,
-	}
-
-	err = json.NewEncoder(w).Encode(response)
-	if err != nil {
+	if err := storage.InsertSnapshot(req.ClusterID, req.Kind, raw.String()); err != nil {
+		writeErr(w, http.StatusInternalServerError, err.Error())
 		return
 	}
+
+	writeJSON(w, http.StatusOK, ingestResponse{
+		Status:    "ingested",
+		ClusterID: req.ClusterID,
+		Kind:      req.Kind,
+	})
 }
 
 func GuardrailsHandler(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", "application/json")
-
-	guardrailPacks, err := storage.FetchGuardrailPacks()
+	packs, err := storage.FetchGuardrailPacks()
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		writeErr(w, http.StatusInternalServerError, err.Error())
 		return
 	}
-
-	w.WriteHeader(http.StatusOK)
-	err = json.NewEncoder(w).Encode(guardrailPacks)
-	if err != nil {
-		return
-	}
+	writeJSON(w, http.StatusOK, packs)
 }
 
 func ReloadGuardrailsHandler(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", "application/json")
-
-	err := guardrails.LoadGuardrailsFromDisk()
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+	if err := guardrails.LoadGuardrailsFromDisk(); err != nil {
+		writeErr(w, http.StatusInternalServerError, err.Error())
 		return
 	}
-
-	w.WriteHeader(http.StatusOK)
-	response := map[string]string{
-		"status": "reloaded",
-	}
-
-	err = json.NewEncoder(w).Encode(response)
-	if err != nil {
-		return
-	}
+	writeJSON(w, http.StatusOK, reloadResponse{Status: "reloaded"})
 }
 
 func FindingsHandler(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", "application/json")
-
-	filters := make(map[string]string)
-	filters["status"] = r.URL.Query().Get("status")
-	filters["severity"] = r.URL.Query().Get("severity")
-	filters["cluster_id"] = r.URL.Query().Get("cluster_id")
-	filters["category"] = r.URL.Query().Get("category")
+	filters := map[string]string{
+		"status":     r.URL.Query().Get("status"),
+		"severity":   r.URL.Query().Get("severity"),
+		"cluster_id": r.URL.Query().Get("cluster_id"),
+		"category":   r.URL.Query().Get("category"),
+	}
 
 	findings, err := storage.FetchFindings(filters)
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		writeErr(w, http.StatusInternalServerError, err.Error())
 		return
 	}
-
-	w.WriteHeader(http.StatusOK)
-	err = json.NewEncoder(w).Encode(findings)
-	if err != nil {
-		return
-	}
+	writeJSON(w, http.StatusOK, findings)
 }
 
 func UpdateFindingHandler(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", "application/json")
-
-	bodyBytes, err := io.ReadAll(r.Body)
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
-	defer r.Body.Close()
-
-	var bodyData map[string]interface{}
-	err = json.Unmarshal(bodyBytes, &bodyData)
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+	var req updateFindingRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeErr(w, http.StatusBadRequest, err.Error())
 		return
 	}
 
-	findingIDValue, findingIDExists := bodyData["finding_id"]
-	statusValue, statusExists := bodyData["status"]
-
-	if !findingIDExists || !statusExists {
-		w.WriteHeader(http.StatusBadRequest)
-		errorResponse := map[string]string{
-			"error": "missing finding_id or status",
-		}
-		err := json.NewEncoder(w).Encode(errorResponse)
-		if err != nil {
-			return
-		}
+	if req.FindingID == 0 || req.Status == "" {
+		writeErr(w, http.StatusBadRequest, "missing finding_id or status")
 		return
 	}
 
-	findingID := int(findingIDValue.(float64))
-	status := statusValue.(string)
-
-	allowedStatuses := map[string]bool{
-		"open":         true,
-		"acknowledged": true,
-		"resolved":     true,
-	}
-
-	if !allowedStatuses[status] {
-		w.WriteHeader(http.StatusBadRequest)
-		errorResponse := map[string]string{
-			"error": "invalid status, must be one of: open, acknowledged, resolved",
-		}
-		err := json.NewEncoder(w).Encode(errorResponse)
-		if err != nil {
-			return
-		}
+	switch req.Status {
+	case "open", "acknowledged", "resolved":
+	default:
+		writeErr(w, http.StatusBadRequest, "invalid status, must be one of: open, acknowledged, resolved")
 		return
 	}
 
-	if err := storage.UpdateFindingStatus(findingID, status); err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+	if err := storage.UpdateFindingStatus(req.FindingID, req.Status); err != nil {
+		writeErr(w, http.StatusInternalServerError, err.Error())
 		return
 	}
 
-	w.WriteHeader(http.StatusOK)
-	response := map[string]string{
-		"status": "updated",
-	}
-
-	err = json.NewEncoder(w).Encode(response)
-	if err != nil {
-		return
-	}
+	writeJSON(w, http.StatusOK, updatedResponse{Status: "updated"})
 }
 
 func DerivedHandler(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", "application/json")
-
 	clusterID := r.URL.Query().Get("cluster_id")
 	if clusterID == "" {
-		w.WriteHeader(http.StatusBadRequest)
-		errorResponse := map[string]string{
-			"error": "missing cluster_id query parameter",
-		}
-		err := json.NewEncoder(w).Encode(errorResponse)
-		if err != nil {
-			return
-		}
+		writeErr(w, http.StatusBadRequest, "missing cluster_id query parameter")
 		return
 	}
 
 	clusterDerived, err := derived.BuildDerived(clusterID)
 	if err != nil {
-		log.Printf("Error building derived data for cluster %s: %v", strconv.Quote(clusterID), err)
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		log.Printf("building derived data: %v", err)
+		writeErr(w, http.StatusInternalServerError, err.Error())
 		return
 	}
-
-	w.WriteHeader(http.StatusOK)
-	err = json.NewEncoder(w).Encode(clusterDerived)
-	if err != nil {
-		return
-	}
+	writeJSON(w, http.StatusOK, clusterDerived)
 }
 
 func RawHandler(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", "application/json")
-
 	clusterID := r.URL.Query().Get("cluster_id")
 	kind := r.URL.Query().Get("kind")
 
 	if clusterID == "" || kind == "" {
-		w.WriteHeader(http.StatusBadRequest)
-		errorResponse := map[string]string{
-			"error": "missing cluster_id or kind query parameters",
-		}
-		err := json.NewEncoder(w).Encode(errorResponse)
-		if err != nil {
-			return
-		}
+		writeErr(w, http.StatusBadRequest, "missing cluster_id or kind query parameters")
 		return
 	}
 
 	snapshots, err := storage.FetchSnapshots(clusterID, kind)
 	if err != nil {
-		log.Printf("Error fetching snapshots for cluster %s kind %s: %v", strconv.Quote(clusterID), strconv.Quote(kind), err)
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		log.Printf("fetching snapshots: %v", err)
+		writeErr(w, http.StatusInternalServerError, err.Error())
 		return
 	}
-
-	w.WriteHeader(http.StatusOK)
-	err = json.NewEncoder(w).Encode(snapshots)
-	if err != nil {
-		return
-	}
+	writeJSON(w, http.StatusOK, snapshots)
 }
 
 func EvaluateGuardrailsHandler(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", "application/json")
-
 	clusterID := r.URL.Query().Get("cluster_id")
 	if clusterID == "" {
-		w.WriteHeader(http.StatusBadRequest)
-		errorResponse := map[string]string{
-			"error": "missing cluster_id query parameter",
-		}
-		err := json.NewEncoder(w).Encode(errorResponse)
-		if err != nil {
-			return
-		}
+		writeErr(w, http.StatusBadRequest, "missing cluster_id query parameter")
 		return
 	}
 
 	evaluator := guardrails.NewEvaluator(storage.DB)
-	evaluationResults, err := evaluator.Evaluate(clusterID)
+	results, err := evaluator.Evaluate(clusterID)
 	if err != nil {
-		log.Printf("Error evaluating guardrails for cluster %s: %v", strconv.Quote(clusterID), err)
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		log.Printf("evaluating guardrails: %v", err)
+		writeErr(w, http.StatusInternalServerError, err.Error())
 		return
 	}
-
-	w.WriteHeader(http.StatusOK)
-	err = json.NewEncoder(w).Encode(evaluationResults)
-	if err != nil {
-		return
-	}
+	writeJSON(w, http.StatusOK, results)
 }
 
 func ImageRiskMapHandler(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", "application/json")
-
 	clusterID := r.URL.Query().Get("cluster_id")
 	if clusterID == "" {
 		clusterID = "default"
@@ -498,32 +207,23 @@ func ImageRiskMapHandler(w http.ResponseWriter, r *http.Request) {
 
 	clusterData, err := derived.BuildDerived(clusterID)
 	if err != nil {
-		log.Printf("Error building derived data for cluster %s: %v", strconv.Quote(clusterID), err)
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		log.Printf("building derived data: %v", err)
+		writeErr(w, http.StatusInternalServerError, err.Error())
 		return
 	}
 
-	riskMap := make(map[string]interface{})
-
+	riskMap := make(map[string]interface{}, len(clusterData.Nodes))
 	for _, node := range clusterData.Nodes {
-		nodeRisk := make(map[string]interface{})
-		nodeRisk["used_images"] = node.UsedImages
-		nodeRisk["unused_images"] = node.UnusedImages
-		nodeRisk["vulnerabilities"] = node.Vulnerabilities
-		riskMap[node.Name] = nodeRisk
+		riskMap[node.Name] = map[string]interface{}{
+			"used_images":     node.UsedImages,
+			"unused_images":   node.UnusedImages,
+			"vulnerabilities": node.Vulnerabilities,
+		}
 	}
-
-	w.WriteHeader(http.StatusOK)
-	err = json.NewEncoder(w).Encode(riskMap)
-	if err != nil {
-		log.Printf("Error encoding risk map response: %v", err)
-		return
-	}
+	writeJSON(w, http.StatusOK, riskMap)
 }
 
 func ScansHandler(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", "application/json")
-
 	clusterID := r.URL.Query().Get("cluster_id")
 	if clusterID == "" {
 		clusterID = "default"
@@ -531,15 +231,122 @@ func ScansHandler(w http.ResponseWriter, r *http.Request) {
 
 	scans, err := storage.FetchScanHistory(clusterID, 50)
 	if err != nil {
-		log.Printf("Error fetching scan history for cluster %s: %v", strconv.Quote(clusterID), err)
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		log.Printf("fetching scan history: %v", err)
+		writeErr(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, scans)
+}
+
+func ClustersHandler(w http.ResponseWriter, r *http.Request) {
+	clusters, err := storage.FetchDistinctClusterIDs()
+	if err != nil {
+		writeErr(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, clustersResponse{Clusters: clusters})
+}
+
+func MetricsHistoryHandler(w http.ResponseWriter, r *http.Request) {
+	clusterID := r.URL.Query().Get("cluster_id")
+	if clusterID == "" {
+		writeErr(w, http.StatusBadRequest, "cluster_id query parameter is required")
 		return
 	}
 
-	w.WriteHeader(http.StatusOK)
-	err = json.NewEncoder(w).Encode(scans)
+	limit := 50
+	if s := r.URL.Query().Get("limit"); s != "" {
+		if n, err := strconv.Atoi(s); err == nil && n > 0 {
+			limit = n
+		}
+	}
+
+	history, err := storage.FetchEvaluationHistory(clusterID, limit)
 	if err != nil {
-		log.Printf("Error encoding scans response: %v", err)
+		writeErr(w, http.StatusInternalServerError, err.Error())
 		return
 	}
+	writeJSON(w, http.StatusOK, metricsHistoryResponse{
+		ClusterID: clusterID,
+		History:   history,
+	})
+}
+
+func computeHealthScore(critical, high, medium int) int {
+	score := 100 - (critical*10 + high*5 + medium)
+	if score < 0 {
+		return 0
+	}
+	return score
+}
+
+func computeCompliancePct(open, acknowledged, resolved int) float64 {
+	total := open + acknowledged + resolved
+	if total == 0 {
+		return 100.0
+	}
+	return float64(resolved) / float64(total) * 100.0
+}
+
+func MetricsHandler(w http.ResponseWriter, r *http.Request) {
+	clusterID := r.URL.Query().Get("cluster_id")
+
+	bySeverity, err := storage.CountFindingsBySeverity(clusterID, "open")
+	if err != nil {
+		writeErr(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	byCategory, err := storage.CountFindingsByCategory(clusterID, "open")
+	if err != nil {
+		writeErr(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	byOwner, err := storage.CountFindingsByOwner(clusterID, "open")
+	if err != nil {
+		writeErr(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	byStatus, err := storage.CountFindingsByStatus(clusterID)
+	if err != nil {
+		writeErr(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	activeGuardrails, err := storage.CountActiveGuardrails()
+	if err != nil {
+		writeErr(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	open := byStatus["open"]
+	acknowledged := byStatus["acknowledged"]
+	resolved := byStatus["resolved"]
+
+	resp := metricsResponse{
+		ClusterID:            clusterID,
+		HealthScore:          computeHealthScore(bySeverity["critical"], bySeverity["high"], bySeverity["medium"]),
+		CompliancePct:        computeCompliancePct(open, acknowledged, resolved),
+		TotalFindings:        open + acknowledged + resolved,
+		OpenFindings:         open,
+		AcknowledgedFindings: acknowledged,
+		ResolvedFindings:     resolved,
+		ActiveGuardrails:     activeGuardrails,
+		BySeverity:           bySeverity,
+		ByCategory:           byCategory,
+		ByOwner:              byOwner,
+	}
+
+	if clusterID == "" {
+		perCluster, err := storage.ListClusterRiskSummaries()
+		if err != nil {
+			writeErr(w, http.StatusInternalServerError, err.Error())
+			return
+		}
+		resp.PerCluster = perCluster
+	}
+
+	writeJSON(w, http.StatusOK, resp)
 }
