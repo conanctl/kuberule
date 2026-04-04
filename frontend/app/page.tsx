@@ -7,6 +7,7 @@ import { Finding, toSeverity } from "@/lib/types"
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Legend } from "recharts"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
+import { QueryBoundary } from "@/components/shared/query-boundary"
 import { useCluster } from "@/lib/cluster-context"
 
 export default function Dashboard() {
@@ -33,20 +34,10 @@ export default function Dashboard() {
     },
   })
 
-  if (metricsQuery.isLoading || findingsQuery.isLoading || aggregateMetricsQuery.isLoading) {
-    return (
-      <div className="flex items-center justify-center h-64">
-        <div className="text-lg">Loading...</div>
-      </div>
-    )
-  }
-
-  if (metricsQuery.error || findingsQuery.error || aggregateMetricsQuery.error) {
-    return (
-      <div className="flex items-center justify-center h-64">
-        <div className="text-red-600">Error loading data</div>
-      </div>
-    )
+  const isLoading = metricsQuery.isLoading || findingsQuery.isLoading || aggregateMetricsQuery.isLoading
+  const queryError = metricsQuery.error ?? findingsQuery.error ?? aggregateMetricsQuery.error
+  if (isLoading || queryError) {
+    return <QueryBoundary isLoading={isLoading} error={queryError}>{null}</QueryBoundary>
   }
 
   const metrics = metricsQuery.data

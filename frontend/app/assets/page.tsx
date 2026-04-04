@@ -8,6 +8,7 @@ import { SeverityPills } from "@/components/shared/severity-pills"
 import { ImageEnriched, WorkloadEnriched, NamespaceEnriched, NodeEnriched } from "@/lib/types"
 import { ColumnDef } from "@tanstack/react-table"
 import { useCluster } from "@/lib/cluster-context"
+import { QueryBoundary } from "@/components/shared/query-boundary"
 
 export default function AssetsPage() {
   const { selectedCluster } = useCluster()
@@ -18,20 +19,8 @@ export default function AssetsPage() {
     enabled: selectedCluster !== "",
   })
 
-  if (isLoading) {
-    return (
-      <div className="flex items-center justify-center h-64">
-        <div className="text-lg">Loading...</div>
-      </div>
-    )
-  }
-
-  if (error) {
-    return (
-      <div className="flex items-center justify-center h-64">
-        <div className="text-red-600">Error loading data</div>
-      </div>
-    )
+  if (isLoading || error) {
+    return <QueryBoundary isLoading={isLoading} error={error}>{null}</QueryBoundary>
   }
 
   const images = derived?.images || []

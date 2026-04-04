@@ -11,6 +11,7 @@ import { useState } from "react"
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs"
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Button } from "@/components/ui/button"
+import { QueryBoundary } from "@/components/shared/query-boundary"
 
 export default function FindingsPage() {
   const [severityFilter, setSeverityFilter] = useState<string>("all")
@@ -40,20 +41,8 @@ export default function FindingsPage() {
     },
   })
 
-  if (isLoading) {
-    return (
-      <div className="flex items-center justify-center h-64">
-        <div className="text-lg">Loading...</div>
-      </div>
-    )
-  }
-
-  if (error) {
-    return (
-      <div className="flex items-center justify-center h-64">
-        <div className="text-red-600">Error loading data</div>
-      </div>
-    )
+  if (isLoading || error) {
+    return <QueryBoundary isLoading={isLoading} error={error}>{null}</QueryBoundary>
   }
 
   let findingsList = findings || []

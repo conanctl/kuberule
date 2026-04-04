@@ -6,6 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { MetricCard } from "@/components/shared/metric-card"
 import { BarChart, Bar, LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, Legend } from "recharts"
 import { useCluster } from "@/lib/cluster-context"
+import { QueryBoundary } from "@/components/shared/query-boundary"
 
 export default function CompliancePage() {
   const { selectedCluster } = useCluster()
@@ -21,20 +22,8 @@ export default function CompliancePage() {
     enabled: selectedCluster !== "",
   })
 
-  if (metricsQuery.isLoading) {
-    return (
-      <div className="flex items-center justify-center h-64">
-        <div className="text-lg">Loading...</div>
-      </div>
-    )
-  }
-
-  if (metricsQuery.error) {
-    return (
-      <div className="flex items-center justify-center h-64">
-        <div className="text-red-600">Error loading data</div>
-      </div>
-    )
+  if (metricsQuery.isLoading || metricsQuery.error) {
+    return <QueryBoundary isLoading={metricsQuery.isLoading} error={metricsQuery.error}>{null}</QueryBoundary>
   }
 
   const metrics = metricsQuery.data
