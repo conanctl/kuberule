@@ -27,7 +27,7 @@ export interface Finding {
   status: string
   first_seen_at: string
   last_seen_at: string
-  evidence: Record<string, any>
+  evidence: Record<string, unknown>
   remediation_hint: string
   owner_label_value: string
 }
@@ -58,7 +58,7 @@ export interface GuardrailEntry {
   target: string
   check: {
     type: string
-    params: Record<string, any>
+    params: Record<string, unknown>
   }
   remediationHint: string
   rationale: string
