@@ -96,8 +96,6 @@ func createTables() {
 		log.Fatal(err)
 	}
 
-	// resolved_at was added after the initial schema so that running upgrades
-	// on an already-deployed database don't need a manual migration step.
 	alterFindingsQuery := `
 		ALTER TABLE findings
 		ADD COLUMN IF NOT EXISTS resolved_at TIMESTAMP NULL
@@ -772,10 +770,6 @@ func ListClusterRiskSummaries() ([]map[string]interface{}, error) {
 	return result, nil
 }
 
-// AutoResolveFindings closes out any findings that were not re-produced by the
-// current evaluation cycle. seenKeys is the set of "guardrail_id|target" pairs
-// that the evaluator still considered a violation — anything else that was
-// previously open/acknowledged is now compliant again.
 func AutoResolveFindings(clusterID string, seenKeys []string) (int, error) {
 	if clusterID == "" {
 		return 0, fmt.Errorf("cluster_id is required for auto-resolve")

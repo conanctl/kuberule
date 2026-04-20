@@ -16,8 +16,6 @@ func parseNodes(payload string, pods []PodEnriched, images []ImageEnriched) []No
 
 	items := extractItems(data, "items")
 	if items == nil {
-		// items came in at the top level rather than under a nested "items" key,
-		// fall back to the raw payload.
 		if arr, ok := data["items"].([]interface{}); ok {
 			items = arr
 		}

@@ -7,10 +7,6 @@ import (
 	"kuberule/backend/storage"
 )
 
-// BuildDerived pulls the latest raw snapshots for a cluster and turns them
-// into the enriched model the UI and evaluator consume. Order matters: images
-// feed workload/node/namespace vulnerability rollups, and pods feed workload
-// and node membership counts.
 func BuildDerived(clusterID string) (*ClusterDerived, error) {
 	out := &ClusterDerived{
 		ClusterID:  clusterID,
@@ -57,9 +53,6 @@ func latestSnapshotPayload(clusterID, kind string) string {
 	return extractPayloadString(snapshots[0])
 }
 
-// Snapshots are stored as the full ingest envelope ({cluster_id, kind, payload}),
-// so the content we actually want to parse is always the inner "payload" field.
-// We re-marshal it to JSON because the downstream parsers all work with strings.
 func extractPayloadString(snapshot map[string]interface{}) string {
 	envelope, ok := snapshot["payload"].(map[string]interface{})
 	if !ok {

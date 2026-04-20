@@ -1,9 +1,5 @@
 package api
 
-// Response shapes shared across handlers. Keep JSON tags aligned with the
-// frontend's expectations in frontend/lib/types.ts — the dashboard parses
-// these directly.
-
 type healthResponse struct {
 	Status string `json:"status"`
 }
