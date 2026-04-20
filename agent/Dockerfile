@@ -1,4 +1,4 @@
-FROM docker.io/aquasec/trivy:latest
+FROM aquasec/trivy:latest
 
 USER root
 
