@@ -18,7 +18,7 @@ cd university-project-kuberule
 docker compose up -d
 ```
 
-This pulls pre-built images and starts the backend, frontend, and database. The schema is created automatically and the bundled guardrail packs are loaded on startup.
+This builds the images from source and starts the backend, frontend, and database. The schema is created automatically and the bundled guardrail packs are loaded on startup.
 
 | Service   | URL                   |
 | --------- | --------------------- |
@@ -42,6 +42,8 @@ The agent image is pulled automatically from the container registry. It will beg
 ```bash
 kubectl logs -l app=kuberule-agent -f
 ```
+
+> If you deployed to a custom namespace with `--namespace`, add `-n <namespace>` to the command above.
 
 ### Step 3 — View results
 
@@ -122,6 +124,7 @@ spec:
 createdb kuberule
 cd backend
 export DATABASE_URL="postgres://localhost/kuberule?sslmode=disable"
+export GUARDRAILS_DIR=guardrails/packs
 go run main.go
 
 # In another terminal, start the frontend
@@ -141,8 +144,8 @@ npm run dev
 | GET    | `/guardrails/evaluate`  | Evaluate guardrails for a cluster     |
 | GET    | `/findings`             | List findings (filterable)            |
 | POST   | `/findings`             | Update finding status                 |
-| GET    | `/debug/derived`        | Get enriched cluster model            |
-| GET    | `/debug/raw`            | Get raw snapshots                     |
+| GET    | `/cluster/state`        | Get enriched cluster model            |
+| GET    | `/cluster/raw`          | Get raw snapshots                     |
 
 ## Tech Stack
 
