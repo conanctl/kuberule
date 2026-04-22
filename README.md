@@ -13,8 +13,8 @@ A declarative, policy-driven management engine for Kubernetes clusters. KubeRule
 ### Step 1 — Start the platform
 
 ```bash
-git clone https://github.com/conanctl/university-project-kuberule.git
-cd university-project-kuberule
+git clone https://github.com/conanctl/kuberule.git
+cd kuberule
 docker compose up -d
 ```
 

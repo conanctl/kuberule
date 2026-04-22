@@ -1,5 +1,5 @@
 image:
-  repository: ghcr.io/conanctl/university-project-kuberule/agent
+  repository: ghcr.io/conanctl/kuberule/agent
   tag: latest
   pullPolicy: Always
 
