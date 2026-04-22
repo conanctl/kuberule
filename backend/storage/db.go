@@ -422,7 +422,15 @@ func FetchFindings(filters map[string]string) ([]map[string]interface{}, error) 
 }
 
 func UpdateFindingStatus(findingID int, status string) error {
-	query := "UPDATE findings SET status=$1 WHERE id=$2"
+	query := `
+		UPDATE findings
+		SET status = $1,
+		    resolved_at = CASE
+		        WHEN $1 = 'resolved' THEN CURRENT_TIMESTAMP
+		        ELSE NULL
+		    END
+		WHERE id = $2
+	`
 
 	_, err := DB.Exec(query, status, findingID)
 	if err != nil {

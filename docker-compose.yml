@@ -24,6 +24,8 @@ services:
       GUARDRAILS_DIR: /app/guardrails/packs
     ports:
       - "18081:18081"
+    volumes:
+      - ./backend/guardrails/packs:/app/guardrails/packs:ro
     depends_on:
       db:
         condition: service_healthy
